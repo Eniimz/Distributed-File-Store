@@ -23,11 +23,15 @@ func NewTCPPeer(conn net.Conn, outbound bool) *TCPPeer {
 type TCPTransport struct {
 	listenAddress string
 	listener      net.Listener
+	shakeHands    Handshake
+	Decoder       Decoder
 }
 
 func NewTCPTransport(listenAdder string) *TCPTransport {
 	return &TCPTransport{
 		listenAddress: listenAdder,
+		shakeHands:    NOPHandshakeFunc,
+		Decoder:       NOPDecoder{},
 	}
 }
 
@@ -58,5 +62,28 @@ func startAcceptLoop(t *TCPTransport) {
 }
 
 func (t *TCPTransport) handleConn(conn net.Conn) {
-	fmt.Println("Handling the connection..: ", conn)
+
+	peer := NewTCPPeer(conn, true)
+
+	err := t.shakeHands(peer)
+	if err != nil {
+		fmt.Printf("TCP Handshake error: ", err)
+		return
+	}
+
+	fmt.Printf("Handling the connection..")
+
+	// buf := make([]byte, 1028)
+
+	// for {
+	// 	n, err := conn.Read(buf)
+	// 	if err != nil {
+	// 		fmt.Printf("Buffer read error: %s", err)
+	// 	}
+	// 	fmt.Printf("The buffer sent: %s", buf[:n])
+	// }
+	for {
+		t.Decoder.Decode(conn)
+	}
+
 }
