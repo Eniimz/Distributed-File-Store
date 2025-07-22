@@ -21,10 +21,11 @@ func NewTCPPeer(conn net.Conn, outbound bool) *TCPPeer {
 }
 
 type TCPTransport struct {
-	listenAddress string
+	listenAddress string //opts
 	listener      net.Listener
-	shakeHands    Handshake
-	Decoder       Decoder
+	shakeHands    Handshake //opts
+	Decoder       Decoder   //opts
+	rpcch         chan Message
 }
 
 func NewTCPTransport(listenAdder string) *TCPTransport {
@@ -32,6 +33,7 @@ func NewTCPTransport(listenAdder string) *TCPTransport {
 		listenAddress: listenAdder,
 		shakeHands:    NOPHandshakeFunc,
 		Decoder:       NOPDecoder{},
+		rpcch:         make(chan Message),
 	}
 }
 
@@ -50,6 +52,10 @@ func (t *TCPTransport) ListenAndAccept() error {
 	return nil
 }
 
+func (t *TCPTransport) Consume() <-chan Message {
+	return t.rpcch
+}
+
 func startAcceptLoop(t *TCPTransport) {
 	for {
 		conn, err := t.listener.Accept()
@@ -65,25 +71,31 @@ func (t *TCPTransport) handleConn(conn net.Conn) {
 
 	peer := NewTCPPeer(conn, true)
 
+	//peer here is of type *TCPPeer struct
+	//this Handshake func expects a param that implements Peer interface
 	err := t.shakeHands(peer)
 	if err != nil {
+		conn.Close()
 		fmt.Printf("TCP Handshake error: ", err)
 		return
 	}
 
 	fmt.Printf("Handling the connection..")
 
-	// buf := make([]byte, 1028)
-
-	// for {
-	// 	n, err := conn.Read(buf)
-	// 	if err != nil {
-	// 		fmt.Printf("Buffer read error: %s", err)
-	// 	}
-	// 	fmt.Printf("The buffer sent: %s", buf[:n])
-	// }
+	msg := Message{}
 	for {
-		t.Decoder.Decode(conn)
+
+		if err := t.Decoder.Decode(conn, &msg); err != nil {
+			fmt.Printf("TCP decode Error: %s\n", err)
+			continue
+		}
+
+		msg.From = conn.RemoteAddr()
+
+		//passing the  rpc to the channel
+		// t.rpcch <- msg // have to pass the value of the struct not pointer
+
+		fmt.Printf("The message: %v", msg)
 	}
 
 }

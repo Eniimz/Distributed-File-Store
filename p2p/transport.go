@@ -4,4 +4,8 @@ package p2p
 // which is transport
 type Transport interface {
 	ListenAndAccept() error
+
+	// returns a channel of type RPC struct, which can be read
+	//in a for loop
+	Consume() <-chan Message
 }

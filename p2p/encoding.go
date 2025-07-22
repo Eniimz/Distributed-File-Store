@@ -1,34 +1,25 @@
 package p2p
 
 import (
-	"fmt"
 	"io"
 )
 
 type Decoder interface {
-	Decode(io.Reader) error
+	Decode(io.Reader, *Message) error
 }
 
 type NOPDecoder struct{}
 
-type Message struct {
-	payload []byte
-}
+func (d NOPDecoder) Decode(r io.Reader, msg *Message) error {
 
-func (d NOPDecoder) Decode(r io.Reader) error {
-
-	buf := make([]byte, 4026)
-
-	msgNew := &Message{}
+	buf := make([]byte, 2000)
 
 	n, err := r.Read(buf)
 	if err != nil {
 		return nil
 	}
 
-	msgNew.payload = buf[:n]
-
-	fmt.Printf("The Message : %s", msgNew)
+	msg.Payload = buf[:n]
 
 	return nil
 }
