@@ -17,6 +17,6 @@ package p2p
 //cant use this as func in a for loop
 // var ErrorInvalidHandshake = errors.New("invalid handshake")
 
-type Handshake func(any) error
+type Handshake func(Peer) error
 
-func NOPHandshakeFunc(any) error { return nil }
+func NOPHandshakeFunc(Peer) error { return nil }

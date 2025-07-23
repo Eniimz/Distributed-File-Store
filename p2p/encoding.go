@@ -1,6 +1,7 @@
 package p2p
 
 import (
+	"bufio"
 	"io"
 )
 
@@ -12,14 +13,21 @@ type NOPDecoder struct{}
 
 func (d NOPDecoder) Decode(r io.Reader, msg *Message) error {
 
-	buf := make([]byte, 2000)
+	reader := bufio.NewReader(r)
 
-	n, err := r.Read(buf)
+	// buf := make([]byte, 2000)
+
+	// n, err := reader.Read(buf)
+
+	line, err := reader.ReadBytes('\n')
+
 	if err != nil {
-		return nil
+
+		return err
 	}
 
-	msg.Payload = buf[:n]
+	// msg.Payload = buf[:n]
+	msg.Payload = line
 
 	return nil
 }

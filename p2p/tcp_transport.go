@@ -1,6 +1,7 @@
 package p2p
 
 import (
+	"errors"
 	"fmt"
 	"net"
 )
@@ -20,27 +21,36 @@ func NewTCPPeer(conn net.Conn, outbound bool) *TCPPeer {
 	}
 }
 
-type TCPTransport struct {
-	listenAddress string //opts
-	listener      net.Listener
-	shakeHands    Handshake //opts
-	Decoder       Decoder   //opts
-	rpcch         chan Message
+func (p *TCPPeer) Close() error {
+
+	return p.conn.Close()
 }
 
-func NewTCPTransport(listenAdder string) *TCPTransport {
+type TCPTransportOpts struct {
+	ListenAddress string    //opts
+	HanshakeFunc  Handshake //opts
+	Decoder       Decoder   //opts
+}
+
+type TCPTransport struct {
+	TCPTransportOpts
+	listener net.Listener
+
+	OnPeer func(Peer) error
+	rpcch  chan Message
+}
+
+func NewTCPTransport(opts TCPTransportOpts) *TCPTransport {
 	return &TCPTransport{
-		listenAddress: listenAdder,
-		shakeHands:    NOPHandshakeFunc,
-		Decoder:       NOPDecoder{},
-		rpcch:         make(chan Message),
+		TCPTransportOpts: opts,
+		rpcch:            make(chan Message),
 	}
 }
 
 func (t *TCPTransport) ListenAndAccept() error {
 	var err error
 
-	t.listener, err = net.Listen("tcp", t.listenAddress)
+	t.listener, err = net.Listen("tcp", t.ListenAddress)
 	if err != nil {
 		return err
 	}
@@ -62,6 +72,8 @@ func startAcceptLoop(t *TCPTransport) {
 		if err != nil {
 			fmt.Printf("TCP accept error: %s\n", err)
 		}
+
+		// we handle each new connection inside a different go routine
 		go t.handleConn(conn)
 	}
 
@@ -69,33 +81,59 @@ func startAcceptLoop(t *TCPTransport) {
 
 func (t *TCPTransport) handleConn(conn net.Conn) {
 
+	var err error
+
+	// Without defer, i'd have to manually call conn.Close()
+	// at every exit point (returns):
+	defer func() {
+		fmt.Printf("dropping peer connection: %v", err)
+		conn.Close()
+	}()
+
 	peer := NewTCPPeer(conn, true)
 
 	//peer here is of type *TCPPeer struct
 	//this Handshake func expects a param that implements Peer interface
-	err := t.shakeHands(peer)
-	if err != nil {
-		conn.Close()
-		fmt.Printf("TCP Handshake error: ", err)
+	if err := t.HanshakeFunc(peer); err != nil {
+		// conn.Close()
+		fmt.Printf("TCP Handshake error: %s", err)
 		return
 	}
 
-	fmt.Printf("Handling the connection..")
+	fmt.Printf("Handling the connection..\n")
+
+	//if user populates OnPeer, we pass the peer connection to the func in params
+	//otherwise we dont
+
+	if t.OnPeer != nil {
+		if err = t.OnPeer(peer); err != nil {
+
+			fmt.Printf("Peer error occureed... ")
+			return
+		}
+	}
 
 	msg := Message{}
+
+	// a Read loop to read messages (rpcs) that are received
 	for {
 
-		if err := t.Decoder.Decode(conn, &msg); err != nil {
-			fmt.Printf("TCP decode Error: %s\n", err)
+		err = t.Decoder.Decode(conn, &msg)
+		if errors.Is(err, net.ErrClosed) {
+			fmt.Printf("TCP network conn closed Error: %s\n", err)
+			return
+		}
+		if err != nil {
+			fmt.Printf("TCP read Error: %s\n", err)
 			continue
 		}
 
 		msg.From = conn.RemoteAddr()
 
 		//passing the  rpc to the channel
-		// t.rpcch <- msg // have to pass the value of the struct not pointer
+		t.rpcch <- msg // have to pass the value of the struct not pointer
 
-		fmt.Printf("The message: %v", msg)
+		// fmt.Printf("The message: %+v", msg)
 	}
 
 }

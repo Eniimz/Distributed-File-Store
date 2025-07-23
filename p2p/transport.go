@@ -9,3 +9,7 @@ type Transport interface {
 	//in a for loop
 	Consume() <-chan Message
 }
+
+type Peer interface {
+	Close() error
+}
