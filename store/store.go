@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"crypto/sha1"
 	"encoding/hex"
+	"errors"
 	"fmt"
 	"io"
 	"io/fs"
@@ -12,6 +13,8 @@ import (
 )
 
 // reading, writing to a store
+
+const DefaultRootName = "Saga"
 
 type PathKey struct {
 	PathName string
@@ -22,6 +25,14 @@ type pathTransFormFunc func(string) PathKey
 
 type StoreOpts struct {
 	pathTransFormFunc pathTransFormFunc
+	Root              string
+}
+
+var DefaultPathTransformFunc = func(key string) PathKey {
+	return PathKey{
+		PathName: key,
+		FileName: key,
+	}
 }
 
 type Store struct {
@@ -44,22 +55,31 @@ func (p PathKey) fullPath() string {
 }
 
 func NewStore(opts StoreOpts) *Store {
+
+	if opts.pathTransFormFunc == nil {
+		opts.pathTransFormFunc = DefaultPathTransformFunc
+	}
+	//or opts.Root == " "
+	if len(opts.Root) == 0 {
+		opts.Root = DefaultRootName
+	}
+
 	return &Store{
 		StoreOpts: opts,
 	}
 }
 
-func Has(key string) bool {
+func (s *Store) Has(key string) bool {
 
 	pathKey := CASPathTransformFunc(key)
+	pathNameWithRoot := fmt.Sprintf("%s/%s", s.Root, pathKey.PathName)
 
-	_, err := os.Stat(pathKey.fullPath())
-	if err == fs.ErrNotExist {
+	_, err := os.Stat(pathNameWithRoot)
+	if errors.Is(err, fs.ErrNotExist) {
 		return false
 	}
 
 	return true
-
 }
 
 func CASPathTransformFunc(key string) PathKey {
@@ -86,18 +106,43 @@ func CASPathTransformFunc(key string) PathKey {
 	}
 }
 
+func (s *Store) clearAll() error {
+	return os.RemoveAll(s.Root)
+}
+
+func (s *Store) Write(key string, r io.Reader) error {
+	return s.writeStream(key, r)
+}
+
+func (s *Store) Read(key string) (io.Reader, error) {
+
+	f, err := s.readStream(key)
+	if err != nil {
+		return nil, err
+	}
+
+	buf := new(bytes.Buffer)
+	_, err = io.Copy(buf, f)
+
+	if err := f.Close(); err != nil {
+		return nil, err
+	}
+	return buf, err
+
+}
+
 func (s *Store) writeStream(key string, r io.Reader) error {
 
-	//hashing
-	pathKey := CASPathTransformFunc(key) // sdad/sds/sds.../sfwd
+	pathKey := CASPathTransformFunc(key)
+	pathNameWithRoot := fmt.Sprintf("%s/%s", s.Root, pathKey.PathName)
 
-	if err := os.MkdirAll(pathKey.PathName, os.ModePerm); err != nil {
+	if err := os.MkdirAll(pathNameWithRoot, os.ModePerm); err != nil {
 		return err
 	}
 	//we make a PathKey struct, so we can easily access the hashStr without /
-	fullPath := pathKey.fullPath()
+	fullPathWithRoot := fmt.Sprintf("%s/%s/%s", s.Root, pathKey.PathName, pathKey.FileName)
 
-	f, err := os.Create(fullPath)
+	f, err := os.Create(fullPathWithRoot)
 	if err != nil {
 		return err
 	}
@@ -108,34 +153,19 @@ func (s *Store) writeStream(key string, r io.Reader) error {
 		return err
 	}
 
-	fmt.Printf("Written %d bytes to the disk %s", n, fullPath)
+	fmt.Printf("Written %d bytes to the disk %s", n, fullPathWithRoot)
 
 	return nil
 }
 
-func (s *Store) Read(key string) (io.Reader, error) {
-
-	f, err := s.ReadStream(key)
-	if err != nil {
-		return nil, err
-	}
-
-	defer f.Close()
-
-	buf := new(bytes.Buffer)
-	_, err = io.Copy(buf, f)
-
-	return buf, err
-
-}
-
 // to give user more authority on what to do with the read data,
-// how and when to read or close it
-func (s *Store) ReadStream(key string) (io.ReadCloser, error) {
+// how and when to read or close it, nah.., actually making this private
+func (s *Store) readStream(key string) (io.ReadCloser, error) {
 
 	pathKey := CASPathTransformFunc(key)
-	// file, err := os.Open(pathKey.fullPath())
-	return os.Open(pathKey.fullPath())
+	pathNameWithRoot := fmt.Sprintf("%s/%s/%s", s.Root, pathKey.PathName, pathKey.FileName)
+
+	return os.Open(pathNameWithRoot)
 }
 
 func (s *Store) Delete(key string) error {
@@ -146,8 +176,8 @@ func (s *Store) Delete(key string) error {
 		fmt.Printf("deleted [%s] from disk", pathKey.FileName)
 	}()
 
-	fmt.Printf("The first Path: %s\n", pathKey.firstPath(pathKey.fullPath()))
+	firstPath := fmt.Sprintf("%s/%s", s.Root, pathKey.firstPath(pathKey.fullPath()))
 
-	return os.RemoveAll(pathKey.firstPath(pathKey.fullPath()))
+	return os.RemoveAll(firstPath)
 
 }
