@@ -14,49 +14,49 @@ import (
 type FileServer struct {
 	pathTransFormFunc store.PathTransFormFunc
 	Root              string
-	Transport         p2p.TCPTransportOpts
+	Transport         p2p.TCPTransport
 	bootstrappedNodes []string
 }
 
 func NewFileServer(opts *p2p.TCPTransport, nodes []string) *FileServer {
 
-	TransportOpts := p2p.TCPTransportOpts{
-		ListenAddress: opts.ListenAddress,
-		HanshakeFunc:  opts.HanshakeFunc,
-		Decoder:       opts.Decoder,
-	}
-
 	return &FileServer{
 		pathTransFormFunc: store.DefaultPathTransformFunc,
 		Root:              store.DefaultRootName,
-		Transport:         TransportOpts,
+		Transport:         *opts,
 		bootstrappedNodes: nodes,
 	}
 }
 
-func consumeOrCloseLoop(t *p2p.TCPTransport) {
+func consumeOrCloseLoop(s *FileServer) {
 
-	for msg := range t.Consume() {
-		fmt.Printf("The msg received in server.go: %s", msg.Payload)
+	for {
+		select {
+		case rpc := <-s.Transport.Consume():
+			fmt.Printf("The message received : %+v", rpc)
+
+		}
 	}
 
 }
 
 func bootstrap(t *p2p.TCPTransport, bootstrapNodes []string) {
 
-	for _, addr := range bootstrapNodes {
+	for {
 
-		go func(addr string) {
-			fmt.Printf("\nConnectnig to reomte peer: %s\n", addr)
-			if err := t.Dial(addr); err != nil {
-				fmt.Printf("Eror while connecting to remote peer: %s", err)
-			}
+		for _, addr := range bootstrapNodes {
 
-		}(addr)
+			go func(addr string) {
+				fmt.Printf("\nConnectnig to reomte peer: %s\n", addr)
+				if err := t.Dial(addr); err != nil {
+					fmt.Printf("Eror while connecting to remote peer: %s", err)
+				}
+
+			}(addr)
+
+		}
 
 	}
-
-	select {}
 
 }
 
@@ -77,6 +77,6 @@ func (s *FileServer) Start(t *p2p.TCPTransport) {
 		bootstrap(t, s.bootstrappedNodes)
 	}
 
-	consumeOrCloseLoop(t)
+	consumeOrCloseLoop(s)
 
 }
