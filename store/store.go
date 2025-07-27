@@ -21,11 +21,15 @@ type PathKey struct {
 	FileName string
 }
 
-type pathTransFormFunc func(string) PathKey
+type PathTransFormFunc func(string) PathKey
 
 type StoreOpts struct {
-	pathTransFormFunc pathTransFormFunc
+	pathTransFormFunc PathTransFormFunc
 	Root              string
+}
+
+type Store struct {
+	StoreOpts
 }
 
 var DefaultPathTransformFunc = func(key string) PathKey {
@@ -33,10 +37,6 @@ var DefaultPathTransformFunc = func(key string) PathKey {
 		PathName: key,
 		FileName: key,
 	}
-}
-
-type Store struct {
-	StoreOpts
 }
 
 func (p PathKey) firstPath(path string) string {

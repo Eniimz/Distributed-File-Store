@@ -1,34 +1,29 @@
 package main
 
 import (
-	"fmt"
-
 	"github.com/eniimz/cas/p2p"
 )
 
-func main() {
-
-	listenAdder := ":4000"
+func makeServer(listenAddress string, nodes ...string) *FileServer {
 
 	opts := p2p.TCPTransportOpts{
-		ListenAddress: listenAdder,
+		ListenAddress: listenAddress,
 		HanshakeFunc:  p2p.NOPHandshakeFunc,
 		Decoder:       p2p.NOPDecoder{},
 	}
 
-	tr := p2p.NewTCPTransport(opts)
+	t := p2p.NewTCPTransport(opts)
 
-	tr.OnPeer = func(p p2p.Peer) error {
-		fmt.Println("The new peer connected")
-		p.Close()
-		return nil
-	}
+	s := NewFileServer(t, nodes)
 
-	tr.ListenAndAccept()
+	s.Start(t)
 
-	for msg := range tr.Consume() {
-		fmt.Printf("The message: %+v\n", msg)
-	}
+	return s
+}
 
-	select {}
+func main() {
+
+	_ = makeServer(":3000")
+	_ = makeServer(":4000", ":3000")
+
 }

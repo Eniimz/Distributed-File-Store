@@ -52,6 +52,7 @@ func (t *TCPTransport) ListenAndAccept() error {
 
 	t.listener, err = net.Listen("tcp", t.ListenAddress)
 	if err != nil {
+		fmt.Printf("Listen error: %s", err)
 		return err
 	}
 
@@ -60,6 +61,24 @@ func (t *TCPTransport) ListenAndAccept() error {
 	go startAcceptLoop(t)
 
 	return nil
+
+}
+
+// This Dial function implements the transport interface
+func (t *TCPTransport) Dial(listenAddress string) error {
+
+	conn, err := net.Dial("tcp", listenAddress)
+	if err != nil {
+		return err
+	}
+
+	//after dialing we also have to listen to that connection (peer)
+	//so we can send data back and forth
+
+	go t.handleConn(conn, true)
+
+	return nil
+
 }
 
 func (t *TCPTransport) Consume() <-chan Message {
@@ -74,12 +93,12 @@ func startAcceptLoop(t *TCPTransport) {
 		}
 
 		// we handle each new connection inside a different go routine
-		go t.handleConn(conn)
+		go t.handleConn(conn, false)
 	}
 
 }
 
-func (t *TCPTransport) handleConn(conn net.Conn) {
+func (t *TCPTransport) handleConn(conn net.Conn, outbound bool) {
 
 	var err error
 
@@ -90,7 +109,7 @@ func (t *TCPTransport) handleConn(conn net.Conn) {
 		conn.Close()
 	}()
 
-	peer := NewTCPPeer(conn, true)
+	peer := NewTCPPeer(conn, outbound)
 
 	//peer here is of type *TCPPeer struct
 	//this Handshake func expects a param that implements Peer interface

@@ -8,6 +8,7 @@ type Transport interface {
 	// returns a channel of type RPC struct, which can be read
 	//in a for loop
 	Consume() <-chan Message
+	Dial() error
 }
 
 type Peer interface {
