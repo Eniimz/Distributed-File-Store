@@ -12,5 +12,4 @@ type Transport interface {
 }
 
 type Peer interface {
-	Close() error
 }

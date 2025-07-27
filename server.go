@@ -2,6 +2,7 @@ package main
 
 import (
 	"fmt"
+	"sync"
 
 	"github.com/eniimz/cas/p2p"
 	"github.com/eniimz/cas/store"
@@ -16,6 +17,10 @@ type FileServer struct {
 	Root              string
 	Transport         p2p.TCPTransport
 	bootstrappedNodes []string
+	quitch            chan struct{}
+	peerLock          sync.Mutex
+	peers             map[string]p2p.Peer
+	onPeer            func(p2p.Peer) error
 }
 
 func NewFileServer(opts *p2p.TCPTransport, nodes []string) *FileServer {
@@ -25,58 +30,74 @@ func NewFileServer(opts *p2p.TCPTransport, nodes []string) *FileServer {
 		Root:              store.DefaultRootName,
 		Transport:         *opts,
 		bootstrappedNodes: nodes,
+		quitch:            make(chan struct{}),
+		// onPeer:            func(p p2p.Peer) error { return nil },
 	}
+}
+
+func (s *FileServer) Stop() {
+	close(s.quitch)
 }
 
 func consumeOrCloseLoop(s *FileServer) {
 
+	defer func() {
+		fmt.Printf("The server stop due to exit signal or some error")
+		s.Transport.Close()
+	}()
+
 	for {
 		select {
-		case rpc := <-s.Transport.Consume():
-			fmt.Printf("The message received : %+v", rpc)
-
+		case msg := <-s.Transport.Consume():
+			fmt.Printf("The rpc received from the read loop: %+v", msg)
+		case <-s.quitch:
+			return
 		}
 	}
 
 }
 
-func bootstrap(t *p2p.TCPTransport, bootstrapNodes []string) {
+func (s *FileServer) bootstrap(bootstrapNodes []string) {
 
-	for {
+	fmt.Printf("\nbootstraping the nodes...\n")
+	for _, addr := range bootstrapNodes {
 
-		for _, addr := range bootstrapNodes {
-
-			go func(addr string) {
-				fmt.Printf("\nConnectnig to reomte peer: %s\n", addr)
-				if err := t.Dial(addr); err != nil {
-					fmt.Printf("Eror while connecting to remote peer: %s", err)
-				}
-
-			}(addr)
-
+		if len(addr) == 0 {
+			continue
 		}
+
+		go func(addr string) {
+			fmt.Printf("\nConnectnig to remote peer: %s\n", addr)
+			if err := s.Transport.Dial(addr); err != nil {
+				fmt.Printf("Eror while connecting to remote peer: %s", err)
+			}
+
+		}(addr)
 
 	}
 
 }
 
-func (s *FileServer) Start(t *p2p.TCPTransport) {
+func onPeer() {
 
-	if err := t.ListenAndAccept(); err != nil {
-		fmt.Printf("Error occured while listening")
+}
+
+func (s *FileServer) Start() error {
+
+	if err := s.Transport.ListenAndAccept(); err != nil {
+		return err
 	}
 
-	fmt.Printf("\nListening on the port: %s", t.ListenAddress)
+	fmt.Printf("\nListening on the port: %s", s.Transport.ListenAddress)
 
 	//for each connection that is accepted, we check the bootstapped nodes len,
 	//if > 0, then we dial all those nodes
 
-	fmt.Printf("\nTHE LEN OF BOOTSTRAPPED NODES: %d", len(s.bootstrappedNodes))
-
 	if len(s.bootstrappedNodes) > 0 {
-		bootstrap(t, s.bootstrappedNodes)
+		s.bootstrap(s.bootstrappedNodes)
 	}
 
 	consumeOrCloseLoop(s)
 
+	return nil
 }

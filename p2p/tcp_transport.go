@@ -21,9 +21,10 @@ func NewTCPPeer(conn net.Conn, outbound bool) *TCPPeer {
 	}
 }
 
-func (p *TCPPeer) Close() error {
+// This implements the Transport interface
+func (p *TCPTransport) Close() error {
 
-	return p.conn.Close()
+	return p.listener.Close()
 }
 
 type TCPTransportOpts struct {
@@ -92,6 +93,7 @@ func startAcceptLoop(t *TCPTransport) {
 			fmt.Printf("TCP accept error: %s\n", err)
 		}
 
+		fmt.Printf("\nNew incoming connection\n")
 		// we handle each new connection inside a different go routine
 		go t.handleConn(conn, false)
 	}
