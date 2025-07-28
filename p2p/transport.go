@@ -1,5 +1,7 @@
 package p2p
 
+import "net"
+
 // The mode of communication that we are using
 // which is transport
 type Transport interface {
@@ -8,8 +10,11 @@ type Transport interface {
 	// returns a channel of type RPC struct, which can be read
 	//in a for loop
 	Consume() <-chan Message
-	Dial() error
+	Dial(string) error
+	Close() error
+	Addr() net.Addr
 }
 
 type Peer interface {
+	RemoteAddr() net.Addr
 }

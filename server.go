@@ -2,6 +2,7 @@ package main
 
 import (
 	"fmt"
+	"log"
 	"sync"
 
 	"github.com/eniimz/cas/p2p"
@@ -15,12 +16,11 @@ import (
 type FileServer struct {
 	pathTransFormFunc store.PathTransFormFunc
 	Root              string
-	Transport         p2p.TCPTransport
+	Transport         p2p.Transport
 	bootstrappedNodes []string
 	quitch            chan struct{}
 	peerLock          sync.Mutex
 	peers             map[string]p2p.Peer
-	onPeer            func(p2p.Peer) error
 }
 
 func NewFileServer(opts *p2p.TCPTransport, nodes []string) *FileServer {
@@ -28,10 +28,11 @@ func NewFileServer(opts *p2p.TCPTransport, nodes []string) *FileServer {
 	return &FileServer{
 		pathTransFormFunc: store.DefaultPathTransformFunc,
 		Root:              store.DefaultRootName,
-		Transport:         *opts,
+		Transport:         opts,
 		bootstrappedNodes: nodes,
 		quitch:            make(chan struct{}),
-		// onPeer:            func(p p2p.Peer) error { return nil },
+		peers:             make(map[string]p2p.Peer),
+		// onPeer:     	       func(p p2p.Peer) error { return nil },
 	}
 }
 
@@ -67,7 +68,7 @@ func (s *FileServer) bootstrap(bootstrapNodes []string) {
 		}
 
 		go func(addr string) {
-			fmt.Printf("\nConnectnig to remote peer: %s\n", addr)
+			fmt.Printf("\nConnecting to remote peer: %s\n", addr)
 			if err := s.Transport.Dial(addr); err != nil {
 				fmt.Printf("Eror while connecting to remote peer: %s", err)
 			}
@@ -78,8 +79,16 @@ func (s *FileServer) bootstrap(bootstrapNodes []string) {
 
 }
 
-func onPeer() {
+func (s *FileServer) OnPeer(p p2p.Peer) error {
+	// s.peerLock.Lock()
 
+	// defer s.peerLock.Unlock()
+	// peer{ remoteAddr : remoteAddr}
+	s.peers[p.RemoteAddr().String()] = p
+
+	log.Printf("Connected with remote peer %s", p.RemoteAddr())
+
+	return nil
 }
 
 func (s *FileServer) Start() error {
@@ -88,7 +97,7 @@ func (s *FileServer) Start() error {
 		return err
 	}
 
-	fmt.Printf("\nListening on the port: %s", s.Transport.ListenAddress)
+	fmt.Printf("\nListening on the port: %s", s.Transport.Addr().String())
 
 	//for each connection that is accepted, we check the bootstapped nodes len,
 	//if > 0, then we dial all those nodes

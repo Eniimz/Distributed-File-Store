@@ -82,6 +82,14 @@ func (t *TCPTransport) Dial(listenAddress string) error {
 
 }
 
+func (t *TCPTransport) Addr() net.Addr {
+	return t.listener.Addr()
+}
+
+func (t *TCPPeer) RemoteAddr() net.Addr {
+	return t.conn.RemoteAddr()
+}
+
 func (t *TCPTransport) Consume() <-chan Message {
 	return t.rpcch
 }
@@ -120,8 +128,6 @@ func (t *TCPTransport) handleConn(conn net.Conn, outbound bool) {
 		fmt.Printf("TCP Handshake error: %s", err)
 		return
 	}
-
-	fmt.Printf("Handling the connection..\n")
 
 	//if user populates OnPeer, we pass the peer connection to the func in params
 	//otherwise we dont

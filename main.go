@@ -1,9 +1,7 @@
 package main
 
 import (
-	"fmt"
 	"log"
-	"time"
 
 	"github.com/eniimz/cas/p2p"
 )
@@ -20,6 +18,8 @@ func makeServer(listenAddress string, nodes ...string) *FileServer {
 
 	s := NewFileServer(t, nodes)
 
+	t.OnPeer = s.OnPeer
+
 	return s
 }
 
@@ -31,16 +31,15 @@ func main() {
 	go func() {
 		log.Fatal(s1.Start())
 	}()
-	// s1.Start()
-	go func() {
-		time.Sleep(6 * time.Second)
-		log.Println("Stopping server on :3000")
-		s1.Stop()
 
-		//getting nil in the logs after stopping why?
-	}()
+	// go func() {
+	// 	time.Sleep(6 * time.Second)
+	// 	log.Println("Stopping server on :3000")
+	// 	s1.Stop()
 
-	if err := s2.Start(); err != nil {
-		fmt.Printf("\nits this nibba")
-	}
+	// 	//getting nil in the logs after stopping why?
+	// }()
+
+	s2.Start()
+
 }
