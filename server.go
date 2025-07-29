@@ -29,12 +29,13 @@ type FileServer struct {
 
 type Message struct {
 	Payload []byte
+	From    string
 }
 
-type Payload struct {
+type DataMessage struct {
 	Key string
 	//gob: type not registered for interface: bytes.Buffer
-	// Data io.Reader  getting some gob error with an interface
+	//(Data io.Reader)  getting some gob error with an interface
 	Data []byte
 }
 
@@ -55,19 +56,19 @@ func NewFileServer(transportOpts *p2p.TCPTransport, nodes []string, storeOpts *s
 // as Peer interface implements net.Conn methods,
 // for every peer strut we create a writer, and then multiWrite
 // the payloas, that is send everyone the payload
-func (s *FileServer) broadcast(p *Payload) error {
-
-	peers := []io.Writer{}
+func (s *FileServer) broadcast(p *Message) error {
 
 	for _, peer := range s.peers {
+		buf := new(bytes.Buffer)
+		if err := gob.NewEncoder(buf).Encode(p); err != nil {
+			return err
+		}
 
-		//treat all peers as generic writers,
-		//  without caring about their specific type.
-		peers = append(peers, peer)
+		if _, err := peer.Write(buf.Bytes()); err != nil {
+			return err
+		}
 	}
-
-	mw := io.MultiWriter(peers...)
-	return gob.NewEncoder(mw).Encode(p)
+	return nil
 }
 
 func (s *FileServer) StoreData(key string, r io.Reader) error {
@@ -84,13 +85,21 @@ func (s *FileServer) StoreData(key string, r io.Reader) error {
 
 	//why pass a pointer?
 	//better to not create copies of stuff like data, files etc
-	p := &Payload{
+	p := &DataMessage{
 		Key:  key,
 		Data: buf.Bytes(),
 	}
 
 	//broadcast the data to known peers in the network
-	s.broadcast(p)
+	if err := s.broadcast(&Message{
+		Payload: p.Data,
+		From:    "todo",
+	}); err != nil {
+		log.Fatal(err)
+		return err
+	}
+
+	// }
 
 	return nil
 }
@@ -111,11 +120,11 @@ func (s *FileServer) consumeOrCloseLoop() {
 		select {
 		case msg := <-s.Transport.Consume():
 			fmt.Printf("\nThe recv msg: %+v", msg)
-			var p Payload
-			if err := gob.NewDecoder(bytes.NewReader(msg.Payload)).Decode(&p); err != nil {
+			var m Message
+			if err := gob.NewDecoder(bytes.NewReader(msg.Payload)).Decode(&m); err != nil {
 				fmt.Printf("The error: %s", err)
 			}
-			fmt.Printf("\nThe msg received: %+v", p.Data)
+			fmt.Printf("\nThe msg received: %+v", string(m.Payload))
 		case <-s.quitch:
 			return
 		}

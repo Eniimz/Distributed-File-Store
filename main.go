@@ -49,15 +49,15 @@ func main() {
 
 	// 	//getting nil in the logs after stopping why?
 	// }()
-	time.Sleep(1 * time.Second)
+	time.Sleep(4 * time.Second)
 
 	go func() {
 		log.Fatal(s2.Start())
 	}()
 
-	data := strings.NewReader("This is my big data file")
+	time.Sleep(4 * time.Second)
 
-	time.Sleep(1 * time.Second)
+	data := strings.NewReader("This is my big data file")
 
 	s2.StoreData("myPrivateData", data)
 

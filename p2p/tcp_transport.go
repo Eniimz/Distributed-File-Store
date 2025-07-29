@@ -149,7 +149,7 @@ func (t *TCPTransport) handleConn(conn net.Conn, outbound bool) {
 			continue
 		}
 
-		msg.From = conn.RemoteAddr()
+		msg.From = conn.RemoteAddr().String()
 
 		//passing the  rpc to the channel
 		t.rpcch <- msg // have to pass the value of the struct not pointer
