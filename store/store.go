@@ -24,7 +24,7 @@ type PathKey struct {
 type PathTransFormFunc func(string) PathKey
 
 type StoreOpts struct {
-	pathTransFormFunc PathTransFormFunc
+	PathTransFormFunc PathTransFormFunc
 	Root              string
 }
 
@@ -56,8 +56,8 @@ func (p PathKey) fullPath() string {
 
 func NewStore(opts StoreOpts) *Store {
 
-	if opts.pathTransFormFunc == nil {
-		opts.pathTransFormFunc = DefaultPathTransformFunc
+	if opts.PathTransFormFunc == nil {
+		opts.PathTransFormFunc = DefaultPathTransformFunc
 	}
 	//or opts.Root == " "
 	if len(opts.Root) == 0 {

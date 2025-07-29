@@ -2,21 +2,31 @@ package main
 
 import (
 	"log"
+	"strings"
+	"time"
 
 	"github.com/eniimz/cas/p2p"
+	"github.com/eniimz/cas/store"
 )
 
 func makeServer(listenAddress string, nodes ...string) *FileServer {
 
-	opts := p2p.TCPTransportOpts{
+	transportOpts := p2p.TCPTransportOpts{
 		ListenAddress: listenAddress,
 		HanshakeFunc:  p2p.NOPHandshakeFunc,
 		Decoder:       p2p.NOPDecoder{},
 	}
 
-	t := p2p.NewTCPTransport(opts)
+	t := p2p.NewTCPTransport(transportOpts)
 
-	s := NewFileServer(t, nodes)
+	storeOpts := store.StoreOpts{
+		PathTransFormFunc: store.CASPathTransformFunc,
+		Root:              store.DefaultRootName,
+	}
+
+	store := store.NewStore(storeOpts)
+
+	s := NewFileServer(t, nodes, store)
 
 	t.OnPeer = s.OnPeer
 
@@ -39,7 +49,19 @@ func main() {
 
 	// 	//getting nil in the logs after stopping why?
 	// }()
+	time.Sleep(1 * time.Second)
 
-	s2.Start()
+	go func() {
+		log.Fatal(s2.Start())
+	}()
 
+	data := strings.NewReader("This is my big data file")
+
+	time.Sleep(1 * time.Second)
+
+	s2.StoreData("myPrivateData", data)
+
+	select {}
 }
+
+//

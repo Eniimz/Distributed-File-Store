@@ -11,7 +11,7 @@ import (
 func TestStore(t *testing.T) {
 
 	opts := StoreOpts{
-		pathTransFormFunc: CASPathTransformFunc,
+		PathTransFormFunc: CASPathTransformFunc,
 	}
 
 	s := NewStore(opts)
@@ -56,7 +56,7 @@ func TestStore(t *testing.T) {
 
 func TestDelete(t *testing.T) {
 	opts := StoreOpts{
-		pathTransFormFunc: CASPathTransformFunc,
+		PathTransFormFunc: CASPathTransformFunc,
 	}
 
 	s := NewStore(opts)

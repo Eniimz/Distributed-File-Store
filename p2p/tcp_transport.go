@@ -7,8 +7,7 @@ import (
 )
 
 type TCPPeer struct {
-	conn net.Conn
-
+	net.Conn
 	//outbound = true => dialing and retrieving the conn(outgoing)
 	//outbound = false => accepting and retieving the connection (incoming)
 	outbound bool
@@ -16,7 +15,7 @@ type TCPPeer struct {
 
 func NewTCPPeer(conn net.Conn, outbound bool) *TCPPeer {
 	return &TCPPeer{
-		conn:     conn,
+		Conn:     conn,
 		outbound: outbound,
 	}
 }
@@ -86,10 +85,6 @@ func (t *TCPTransport) Addr() net.Addr {
 	return t.listener.Addr()
 }
 
-func (t *TCPPeer) RemoteAddr() net.Addr {
-	return t.conn.RemoteAddr()
-}
-
 func (t *TCPTransport) Consume() <-chan Message {
 	return t.rpcch
 }
@@ -130,11 +125,10 @@ func (t *TCPTransport) handleConn(conn net.Conn, outbound bool) {
 	}
 
 	//if user populates OnPeer, we pass the peer connection to the func in params
-	//otherwise we dont
+	//and invoke it, otherwise we dont
 
 	if t.OnPeer != nil {
 		if err = t.OnPeer(peer); err != nil {
-
 			fmt.Printf("Peer error occureed... ")
 			return
 		}

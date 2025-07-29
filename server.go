@@ -1,7 +1,10 @@
 package main
 
 import (
+	"bytes"
+	"encoding/gob"
 	"fmt"
+	"io"
 	"log"
 	"sync"
 
@@ -19,28 +22,84 @@ type FileServer struct {
 	Transport         p2p.Transport
 	bootstrappedNodes []string
 	quitch            chan struct{}
+	store             *store.Store
 	peerLock          sync.Mutex
 	peers             map[string]p2p.Peer
 }
 
-func NewFileServer(opts *p2p.TCPTransport, nodes []string) *FileServer {
+type Message struct {
+	Payload []byte
+}
+
+type Payload struct {
+	Key string
+	//gob: type not registered for interface: bytes.Buffer
+	// Data io.Reader  getting some gob error with an interface
+	Data []byte
+}
+
+func NewFileServer(transportOpts *p2p.TCPTransport, nodes []string, storeOpts *store.Store) *FileServer {
 
 	return &FileServer{
 		pathTransFormFunc: store.DefaultPathTransformFunc,
 		Root:              store.DefaultRootName,
-		Transport:         opts,
+		Transport:         transportOpts,
 		bootstrappedNodes: nodes,
 		quitch:            make(chan struct{}),
+		store:             storeOpts,
 		peers:             make(map[string]p2p.Peer),
 		// onPeer:     	       func(p p2p.Peer) error { return nil },
 	}
+}
+
+// as Peer interface implements net.Conn methods,
+// for every peer strut we create a writer, and then multiWrite
+// the payloas, that is send everyone the payload
+func (s *FileServer) broadcast(p *Payload) error {
+
+	peers := []io.Writer{}
+
+	for _, peer := range s.peers {
+
+		//treat all peers as generic writers,
+		//  without caring about their specific type.
+		peers = append(peers, peer)
+	}
+
+	mw := io.MultiWriter(peers...)
+	return gob.NewEncoder(mw).Encode(p)
+}
+
+func (s *FileServer) StoreData(key string, r io.Reader) error {
+
+	//store data into disk
+
+	buf := new(bytes.Buffer)
+
+	tee := io.TeeReader(r, buf)
+
+	if err := s.store.Write(key, tee); err != nil {
+		return err
+	}
+
+	//why pass a pointer?
+	//better to not create copies of stuff like data, files etc
+	p := &Payload{
+		Key:  key,
+		Data: buf.Bytes(),
+	}
+
+	//broadcast the data to known peers in the network
+	s.broadcast(p)
+
+	return nil
 }
 
 func (s *FileServer) Stop() {
 	close(s.quitch)
 }
 
-func consumeOrCloseLoop(s *FileServer) {
+func (s *FileServer) consumeOrCloseLoop() {
 
 	defer func() {
 		fmt.Printf("The server stop due to exit signal or some error")
@@ -48,9 +107,15 @@ func consumeOrCloseLoop(s *FileServer) {
 	}()
 
 	for {
+
 		select {
 		case msg := <-s.Transport.Consume():
-			fmt.Printf("The rpc received from the read loop: %+v", msg)
+			fmt.Printf("\nThe recv msg: %+v", msg)
+			var p Payload
+			if err := gob.NewDecoder(bytes.NewReader(msg.Payload)).Decode(&p); err != nil {
+				fmt.Printf("The error: %s", err)
+			}
+			fmt.Printf("\nThe msg received: %+v", p.Data)
 		case <-s.quitch:
 			return
 		}
@@ -70,7 +135,7 @@ func (s *FileServer) bootstrap(bootstrapNodes []string) {
 		go func(addr string) {
 			fmt.Printf("\nConnecting to remote peer: %s\n", addr)
 			if err := s.Transport.Dial(addr); err != nil {
-				fmt.Printf("Eror while connecting to remote peer: %s", err)
+				fmt.Printf("Error while connecting to remote peer: %s", err)
 			}
 
 		}(addr)
@@ -79,6 +144,8 @@ func (s *FileServer) bootstrap(bootstrapNodes []string) {
 
 }
 
+// to ensure server itself isnt included in the peers map
+// its already done so by the design of this logic..
 func (s *FileServer) OnPeer(p p2p.Peer) error {
 	// s.peerLock.Lock()
 
@@ -106,7 +173,7 @@ func (s *FileServer) Start() error {
 		s.bootstrap(s.bootstrappedNodes)
 	}
 
-	consumeOrCloseLoop(s)
+	s.consumeOrCloseLoop()
 
 	return nil
 }

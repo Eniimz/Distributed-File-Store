@@ -16,5 +16,5 @@ type Transport interface {
 }
 
 type Peer interface {
-	RemoteAddr() net.Addr
+	net.Conn
 }
