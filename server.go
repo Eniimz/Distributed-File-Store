@@ -32,13 +32,6 @@ type Message struct {
 	From    string
 }
 
-type DataMessage struct {
-	Key string
-	//gob: type not registered for interface: bytes.Buffer
-	//(Data io.Reader)  getting some gob error with an interface
-	Data []byte
-}
-
 func NewFileServer(transportOpts *p2p.TCPTransport, nodes []string, storeOpts *store.Store) *FileServer {
 
 	return &FileServer{
@@ -74,32 +67,21 @@ func (s *FileServer) broadcast(p *Message) error {
 func (s *FileServer) StoreData(key string, r io.Reader) error {
 
 	//store data into disk
-
 	buf := new(bytes.Buffer)
 
-	tee := io.TeeReader(r, buf)
+	msg := Message{
+		Payload: []byte("Storagekey"),
+	}
 
-	if err := s.store.Write(key, tee); err != nil {
+	if err := gob.NewEncoder(buf).Encode(msg); err != nil {
 		return err
 	}
 
-	//why pass a pointer?
-	//better to not create copies of stuff like data, files etc
-	p := &DataMessage{
-		Key:  key,
-		Data: buf.Bytes(),
+	for _, peer := range s.peers {
+		if _, err := peer.Write(buf.Bytes()); err != nil {
+			log.Fatal(err)
+		}
 	}
-
-	//broadcast the data to known peers in the network
-	if err := s.broadcast(&Message{
-		Payload: p.Data,
-		From:    "todo",
-	}); err != nil {
-		log.Fatal(err)
-		return err
-	}
-
-	// }
 
 	return nil
 }
@@ -124,7 +106,7 @@ func (s *FileServer) consumeOrCloseLoop() {
 			if err := gob.NewDecoder(bytes.NewReader(msg.Payload)).Decode(&m); err != nil {
 				fmt.Printf("The error: %s", err)
 			}
-			fmt.Printf("\nThe msg received: %+v", string(m.Payload))
+			fmt.Printf("\nThe msg received: %s", string(m.Payload))
 		case <-s.quitch:
 			return
 		}

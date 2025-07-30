@@ -128,13 +128,13 @@ func (t *TCPTransport) handleConn(conn net.Conn, outbound bool) {
 	//and invoke it, otherwise we dont
 
 	if t.OnPeer != nil {
-		if err = t.OnPeer(peer); err != nil {
+		if err = t.OnPeer(peer); err != nil { //when some node makes a connedtion to this node
 			fmt.Printf("Peer error occureed... ")
 			return
 		}
 	}
 
-	msg := Message{}
+	msg := Message{} //rpc
 
 	// a Read loop to read messages (rpcs) that are received
 	for {

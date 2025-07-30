@@ -15,19 +15,23 @@ func (d NOPDecoder) Decode(r io.Reader, msg *Message) error {
 
 	reader := bufio.NewReader(r)
 
-	// buf := make([]byte, 2000)
+	buf := make([]byte, 2000)
 
-	// n, err := reader.Read(buf)
-
-	line, err := reader.ReadBytes('\n')
+	n, err := reader.Read(buf)
 
 	if err != nil {
 
 		return err
 	}
 
-	// msg.Payload = buf[:n]
-	msg.Payload = line
+	msg.Payload = buf[:n]
 
 	return nil
 }
+
+//here i was using earlier to read till delimeter line, err := reader.ReadBytes('\n')
+//which has issues
+//1. id data doesnt have \n at end, eof error
+//2. even if it does, the go encoding coeeupts the data
+//so for small files, we can wset a buffer of some space
+//but for large file, we'll have to stream them
