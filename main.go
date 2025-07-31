@@ -42,20 +42,13 @@ func main() {
 		log.Fatal(s1.Start())
 	}()
 
-	// go func() {
-	// 	time.Sleep(6 * time.Second)
-	// 	log.Println("Stopping server on :3000")
-	// 	s1.Stop()
-
-	// 	//getting nil in the logs after stopping why?
-	// }()
-	time.Sleep(4 * time.Second)
+	time.Sleep(2 * time.Second)
 
 	go func() {
 		log.Fatal(s2.Start())
 	}()
 
-	time.Sleep(4 * time.Second)
+	time.Sleep(2 * time.Second)
 
 	data := strings.NewReader("This is my big data file")
 
@@ -64,4 +57,4 @@ func main() {
 	select {}
 }
 
-//
+//11

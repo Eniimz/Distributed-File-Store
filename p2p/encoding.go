@@ -17,6 +17,8 @@ func (d NOPDecoder) Decode(r io.Reader, msg *Message) error {
 
 	buf := make([]byte, 2000)
 
+	//this line blocks the thread and waits for data to be received and read
+	//reader is a *bufio.Reader, wrapping r, which is net.Conn
 	n, err := reader.Read(buf)
 
 	if err != nil {

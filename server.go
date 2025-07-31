@@ -7,6 +7,7 @@ import (
 	"io"
 	"log"
 	"sync"
+	"time"
 
 	"github.com/eniimz/cas/p2p"
 	"github.com/eniimz/cas/store"
@@ -70,7 +71,7 @@ func (s *FileServer) StoreData(key string, r io.Reader) error {
 	buf := new(bytes.Buffer)
 
 	msg := Message{
-		Payload: []byte("Storagekey"),
+		Payload: []byte(key),
 	}
 
 	if err := gob.NewEncoder(buf).Encode(msg); err != nil {
@@ -83,6 +84,16 @@ func (s *FileServer) StoreData(key string, r io.Reader) error {
 		}
 	}
 
+	time.Sleep(2 * time.Second)
+
+	payload := []byte("The large file content")
+
+	for _, peer := range s.peers {
+		if _, err := peer.Write(payload); err != nil {
+			log.Fatal(err)
+		}
+	}
+
 	return nil
 }
 
@@ -90,6 +101,7 @@ func (s *FileServer) Stop() {
 	close(s.quitch)
 }
 
+// The dialers read loop, but as well as the first read loop of the remote server that was dialed..
 func (s *FileServer) consumeOrCloseLoop() {
 
 	defer func() {
@@ -98,20 +110,41 @@ func (s *FileServer) consumeOrCloseLoop() {
 	}()
 
 	for {
-
+		fmt.Printf("\nIm waiting on the channel to read")
 		select {
 		case msg := <-s.Transport.Consume():
 			fmt.Printf("\nThe recv msg: %+v", msg)
+
 			var m Message
 			if err := gob.NewDecoder(bytes.NewReader(msg.Payload)).Decode(&m); err != nil {
 				fmt.Printf("The error: %s", err)
 			}
+
 			fmt.Printf("\nThe msg received: %s", string(m.Payload))
+
 		case <-s.quitch:
 			return
 		}
 	}
 
+}
+
+func (s *FileServer) handleMessage() {
+
+}
+
+func (s *FileServer) handleMessageStoreFile(from string) {
+
+	buf := make([]byte, 1000)
+	peer := s.peers[from]
+
+	fmt.Printf("\nThe peer: %+v\n", peer)
+	_, err := peer.Read(buf)
+	if err != nil {
+		panic(err)
+	}
+
+	fmt.Printf("\nThe file content: %s", string(buf))
 }
 
 func (s *FileServer) bootstrap(bootstrapNodes []string) {
@@ -144,7 +177,7 @@ func (s *FileServer) OnPeer(p p2p.Peer) error {
 	// peer{ remoteAddr : remoteAddr}
 	s.peers[p.RemoteAddr().String()] = p
 
-	log.Printf("Connected with remote peer %s", p.RemoteAddr())
+	log.Printf("Connected with remote peer %+v", s.peers)
 
 	return nil
 }

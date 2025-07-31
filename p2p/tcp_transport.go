@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"net"
+	"sync"
 )
 
 type TCPPeer struct {
@@ -11,12 +12,15 @@ type TCPPeer struct {
 	//outbound = true => dialing and retrieving the conn(outgoing)
 	//outbound = false => accepting and retieving the connection (incoming)
 	outbound bool
+
+	wg *sync.WaitGroup
 }
 
 func NewTCPPeer(conn net.Conn, outbound bool) *TCPPeer {
 	return &TCPPeer{
 		Conn:     conn,
 		outbound: outbound,
+		wg:       &sync.WaitGroup{},
 	}
 }
 
@@ -128,7 +132,7 @@ func (t *TCPTransport) handleConn(conn net.Conn, outbound bool) {
 	//and invoke it, otherwise we dont
 
 	if t.OnPeer != nil {
-		if err = t.OnPeer(peer); err != nil { //when some node makes a connedtion to this node
+		if err = t.OnPeer(peer); err != nil { //when some node makes a connection to this node
 			fmt.Printf("Peer error occureed... ")
 			return
 		}
@@ -138,10 +142,10 @@ func (t *TCPTransport) handleConn(conn net.Conn, outbound bool) {
 
 	// a Read loop to read messages (rpcs) that are received
 	for {
-
+		fmt.Printf("\nIm waiting on the peer connection to read")
 		err = t.Decoder.Decode(conn, &msg)
 		if errors.Is(err, net.ErrClosed) {
-			fmt.Printf("TCP network conn closed Error: %s\n", err)
+			fmt.Printf("\nTCP network conn closed Error: %s\n", err)
 			return
 		}
 		if err != nil {
@@ -151,10 +155,17 @@ func (t *TCPTransport) handleConn(conn net.Conn, outbound bool) {
 
 		msg.From = conn.RemoteAddr().String()
 
-		//passing the  rpc to the channel
-		t.rpcch <- msg // have to pass the value of the struct not pointer
-
+		//when data is passed here, in this same node the consumer also runs
+		//thus it receives this msg
+		peer.wg.Add(1)
+		fmt.Printf("Waiting till the stream is done: ")
+		t.rpcch <- msg
+		fmt.Printf("The stream is done and completed")
+		peer.wg.Wait()
 		// fmt.Printf("The message: %+v", msg)
 	}
 
 }
+
+//first send a msg that tells about the file
+//then a msg with the file content
