@@ -17,4 +17,5 @@ type Transport interface {
 
 type Peer interface {
 	net.Conn
+	Send([]byte) error
 }

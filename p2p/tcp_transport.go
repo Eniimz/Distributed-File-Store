@@ -13,14 +13,14 @@ type TCPPeer struct {
 	//outbound = false => accepting and retieving the connection (incoming)
 	outbound bool
 
-	wg *sync.WaitGroup
+	Wg *sync.WaitGroup
 }
 
 func NewTCPPeer(conn net.Conn, outbound bool) *TCPPeer {
 	return &TCPPeer{
 		Conn:     conn,
 		outbound: outbound,
-		wg:       &sync.WaitGroup{},
+		Wg:       &sync.WaitGroup{},
 	}
 }
 
@@ -83,6 +83,11 @@ func (t *TCPTransport) Dial(listenAddress string) error {
 
 	return nil
 
+}
+
+func (p *TCPPeer) Send(data []byte) error {
+	_, err := p.Write(data)
+	return err
 }
 
 func (t *TCPTransport) Addr() net.Addr {
@@ -157,11 +162,11 @@ func (t *TCPTransport) handleConn(conn net.Conn, outbound bool) {
 
 		//when data is passed here, in this same node the consumer also runs
 		//thus it receives this msg
-		peer.wg.Add(1)
-		fmt.Printf("Waiting till the stream is done: ")
+		peer.Wg.Add(1)
+		fmt.Printf("/nWaiting till the stream is done: ")
 		t.rpcch <- msg
-		fmt.Printf("The stream is done and completed")
-		peer.wg.Wait()
+		fmt.Printf("/nThe stream is done and completed")
+		peer.Wg.Wait()
 		// fmt.Printf("The message: %+v", msg)
 	}
 
