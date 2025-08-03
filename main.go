@@ -11,6 +11,7 @@ import (
 
 func makeServer(listenAddress string, nodes ...string) *FileServer {
 
+	root := strings.ReplaceAll(listenAddress, ":", "") + "_network"
 	transportOpts := p2p.TCPTransportOpts{
 		ListenAddress: listenAddress,
 		HanshakeFunc:  p2p.NOPHandshakeFunc,
@@ -21,7 +22,7 @@ func makeServer(listenAddress string, nodes ...string) *FileServer {
 
 	storeOpts := store.StoreOpts{
 		PathTransFormFunc: store.CASPathTransformFunc,
-		Root:              store.DefaultRootName,
+		Root:              root,
 	}
 
 	store := store.NewStore(storeOpts)
@@ -57,4 +58,5 @@ func main() {
 	select {}
 }
 
-//11
+//handleMessagStore
+// first check if the file is there, if its then read if not read from peers

@@ -110,7 +110,7 @@ func (s *Store) clearAll() error {
 	return os.RemoveAll(s.Root)
 }
 
-func (s *Store) Write(key string, r io.Reader) error {
+func (s *Store) Write(key string, r io.Reader) (int64, error) {
 	return s.writeStream(key, r)
 }
 
@@ -131,30 +131,33 @@ func (s *Store) Read(key string) (io.Reader, error) {
 
 }
 
-func (s *Store) writeStream(key string, r io.Reader) error {
+func (s *Store) writeStream(key string, r io.Reader) (int64, error) {
 
 	pathKey := CASPathTransformFunc(key)
 	pathNameWithRoot := fmt.Sprintf("%s/%s", s.Root, pathKey.PathName)
 
 	if err := os.MkdirAll(pathNameWithRoot, os.ModePerm); err != nil {
-		return err
+		fmt.Printf("An Error occured:%s ", err)
+		return 0, err
 	}
+
 	//we make a PathKey struct, so we can easily access the hashStr without /
 	fullPathWithRoot := fmt.Sprintf("%s/%s/%s", s.Root, pathKey.PathName, pathKey.FileName)
 
 	f, err := os.Create(fullPathWithRoot)
 	if err != nil {
-		return err
+		return 0, err
 	}
 
 	//f is the returned file that is created
 	n, err := io.Copy(f, r)
 	if err != nil {
-		return err
+		panic(err)
+		return 0, err
 	}
 	fmt.Printf("Written %d bytes to the disk %s", n, fullPathWithRoot)
 
-	return nil
+	return n, nil
 }
 
 // to give user more authority on what to do with the read data,
