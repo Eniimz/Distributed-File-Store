@@ -6,7 +6,7 @@ import (
 	"fmt"
 	"io"
 	"log"
-	"sync"
+	"time"
 
 	"github.com/eniimz/cas/p2p"
 	"github.com/eniimz/cas/store"
@@ -23,7 +23,6 @@ type FileServer struct {
 	bootstrappedNodes []string
 	quitch            chan struct{}
 	store             *store.Store
-	peerLock          sync.Mutex
 	peers             map[string]p2p.Peer
 }
 
@@ -34,6 +33,10 @@ type Message struct {
 type MessageStoreFile struct {
 	Key  string
 	Size int64
+}
+
+type MessageGetFile struct {
+	Key string
 }
 
 func NewFileServer(transportOpts *p2p.TCPTransport, nodes []string, storeOpts *store.Store) *FileServer {
@@ -55,9 +58,11 @@ func NewFileServer(transportOpts *p2p.TCPTransport, nodes []string, storeOpts *s
 // the payloas, that is send everyone the payload
 func (s *FileServer) broadcast(p *Message) error {
 
+	fmt.Printf("Broadcasting...\n")
 	buf := new(bytes.Buffer)
 
 	if err := gob.NewEncoder(buf).Encode(p); err != nil {
+		fmt.Printf("The err: %s\n", err)
 		return err
 	}
 	for _, peer := range s.peers {
@@ -71,11 +76,52 @@ func (s *FileServer) broadcast(p *Message) error {
 	return nil
 }
 
+func (s *FileServer) Read(key string) (io.Reader, error) {
+
+	if s.store.Has(key) {
+		r, err := s.store.Read(key)
+		if err != nil {
+			fmt.Printf("The error: %s", err)
+			return nil, err
+		}
+		return r, nil
+
+	}
+
+	fmt.Printf("data does not exist in local disk, reading from the network...\n")
+
+	msg := Message{
+		Payload: MessageGetFile{
+			Key: key,
+		},
+	}
+
+	s.broadcast(&msg)
+
+	// time.Sleep(time.Second * 2)
+
+	for _, peer := range s.peers {
+
+		fmt.Printf("receiving peer from the network")
+		fileBuffer := new(bytes.Buffer)
+		_, err := io.Copy(fileBuffer, io.LimitReader(peer, 24))
+		if err != nil {
+			fmt.Printf("Error in receiving the msg from remote peer %s: ", err)
+			return nil, err
+		}
+
+	}
+
+	fmt.Printf("received bytes from the network:")
+	return nil, nil
+}
+
 func (s *FileServer) StoreData(key string, r io.Reader) error {
 	//store data into disk
-
-	buf := new(bytes.Buffer)
-	tee := io.TeeReader(r, buf)
+	var (
+		buf = new(bytes.Buffer)
+		tee = io.TeeReader(r, buf)
+	)
 
 	n, err := s.store.Write(key, tee)
 	if err != nil {
@@ -116,11 +162,11 @@ func (s *FileServer) consumeOrCloseLoop() {
 		fmt.Printf("\nIm waiting on the channel to read")
 		select {
 		case msg := <-s.Transport.Consume():
-			fmt.Printf("\nThe recv msg: %+v", msg)
+			fmt.Printf("\nThe recv msg: %s\n", string(msg.Payload))
 
 			var m Message
 			if err := gob.NewDecoder(bytes.NewReader(msg.Payload)).Decode(&m); err != nil {
-				fmt.Printf("The error: %s", err)
+				fmt.Printf("The error: %s\n", err)
 			}
 
 			if err := s.handleMessage(msg.From, &m); err != nil {
@@ -140,6 +186,11 @@ func (s *FileServer) handleMessage(from string, msg *Message) error {
 		if err := s.handleMessageStoreFile(from, v); err != nil {
 			return err
 		}
+	case MessageGetFile:
+		if err := s.handleMessageGetFile(from, v); err != nil {
+			return err
+		}
+
 	}
 
 	return nil
@@ -152,8 +203,6 @@ func (s *FileServer) handleMessageStoreFile(from string, msg MessageStoreFile) e
 		return fmt.Errorf("peer (%s) could not be found in the peer list", from)
 	}
 
-	fmt.Printf("\nThe file key: %s", string(msg.Key))
-	fmt.Printf("The data length: %d", msg.Size)
 	_, err := s.store.Write(msg.Key, io.LimitReader(peer, msg.Size))
 	if err != nil {
 		return err
@@ -161,6 +210,34 @@ func (s *FileServer) handleMessageStoreFile(from string, msg MessageStoreFile) e
 	peer.(*p2p.TCPPeer).Wg.Done()
 
 	return nil
+}
+
+func (s *FileServer) handleMessageGetFile(from string, msg MessageGetFile) error {
+
+	if !s.store.Has(msg.Key) {
+		return fmt.Errorf("data couldnt be found in the remote peer: %s", from)
+	}
+
+	r, err := s.store.Read(msg.Key)
+	if err != nil {
+		return err
+	}
+
+	peer, ok := s.peers[from]
+	if !ok {
+		return fmt.Errorf("peer not found in the peers map: %s", from)
+	}
+
+	fmt.Printf("Writing back to the network...")
+	n, err := io.Copy(peer, r)
+	if err != nil {
+		return err
+	}
+
+	fmt.Printf("\n[%s]Written %d bytes over to the network from %s", time.Now().Format("15:04:05.000"), n, from)
+	peer.(*p2p.TCPPeer).Wg.Done()
+	return nil
+
 }
 
 func (s *FileServer) bootstrap(bootstrapNodes []string) {
@@ -218,6 +295,9 @@ func (s *FileServer) Start() error {
 	return nil
 }
 
+// any type that is embedded into the type that is being encoded by gob
+// needs to be registered here
 func init() {
 	gob.Register(MessageStoreFile{})
+	gob.Register(MessageGetFile{})
 }

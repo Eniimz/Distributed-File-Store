@@ -2,7 +2,9 @@ package p2p
 
 import (
 	"bufio"
+	"fmt"
 	"io"
+	"time"
 )
 
 type Decoder interface {
@@ -20,11 +22,11 @@ func (d NOPDecoder) Decode(r io.Reader, msg *Message) error {
 	//this line blocks the thread and waits for data to be received and read
 	//reader is a *bufio.Reader, wrapping r, which is net.Conn
 	n, err := reader.Read(buf)
-
 	if err != nil {
-
 		return err
 	}
+
+	fmt.Printf("[%s] Read %d byes from the network", time.Now().Format("15:04:05.000"), n)
 
 	msg.Payload = buf[:n]
 

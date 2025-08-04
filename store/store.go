@@ -152,10 +152,10 @@ func (s *Store) writeStream(key string, r io.Reader) (int64, error) {
 	//f is the returned file that is created
 	n, err := io.Copy(f, r)
 	if err != nil {
-		panic(err)
 		return 0, err
 	}
-	fmt.Printf("Written %d bytes to the disk %s", n, fullPathWithRoot)
+
+	fmt.Printf("Written %d bytes to the disk %s\n", n, fullPathWithRoot)
 
 	return n, nil
 }

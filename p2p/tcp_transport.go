@@ -147,8 +147,9 @@ func (t *TCPTransport) handleConn(conn net.Conn, outbound bool) {
 
 	// a Read loop to read messages (rpcs) that are received
 	for {
-		fmt.Printf("\nIm waiting on the peer connection to read\n")
+		fmt.Printf("\nIm waiting on the peer connection to read on conn %s\n", conn.RemoteAddr().String())
 		err = t.Decoder.Decode(conn, &msg)
+		fmt.Printf("\nAfter lower Decode i'm on conn %s\n", conn.RemoteAddr().String())
 		if errors.Is(err, net.ErrClosed) {
 			fmt.Printf("\nTCP network conn closed Error: %s\n", err)
 			return
@@ -160,7 +161,7 @@ func (t *TCPTransport) handleConn(conn net.Conn, outbound bool) {
 
 		msg.From = conn.RemoteAddr().String()
 
-		//when data is passed here, in this same node the consumer also runs
+		//when data is passed here,the consumer also runs of the same nodek
 		//thus it receives this msg
 		peer.Wg.Add(1)
 		fmt.Printf("\nWaiting till the stream is done: ")

@@ -51,12 +51,12 @@ func main() {
 
 	time.Sleep(2 * time.Second)
 
-	data := strings.NewReader("This is my big data file")
+	// data := bytes.NewReader([]byte("The big data file"))
+	// s2.StoreData("myPrivateDate", data)
 
-	s2.StoreData("myPrivateData", data)
+	s2.Read("myPrivateDate")
 
 	select {}
 }
 
-//handleMessagStore
 // first check if the file is there, if its then read if not read from peers
