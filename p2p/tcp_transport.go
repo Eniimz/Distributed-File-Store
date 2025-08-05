@@ -90,8 +90,8 @@ func (p *TCPPeer) Send(data []byte) error {
 	return err
 }
 
-func (t *TCPTransport) Addr() net.Addr {
-	return t.listener.Addr()
+func (t *TCPTransport) Addr() string {
+	return t.ListenAddress
 }
 
 func (t *TCPTransport) Consume() <-chan Message {
@@ -105,7 +105,6 @@ func startAcceptLoop(t *TCPTransport) {
 			fmt.Printf("TCP accept error: %s\n", err)
 		}
 
-		fmt.Printf("\nNew incoming connection\n")
 		// we handle each new connection inside a different go routine
 		go t.handleConn(conn, false)
 	}
@@ -143,13 +142,10 @@ func (t *TCPTransport) handleConn(conn net.Conn, outbound bool) {
 		}
 	}
 
-	msg := Message{} //rpc
-
 	// a Read loop to read messages (rpcs) that are received
 	for {
-		fmt.Printf("\nIm waiting on the peer connection to read on conn %s\n", conn.RemoteAddr().String())
+		msg := Message{} //rpc
 		err = t.Decoder.Decode(conn, &msg)
-		fmt.Printf("\nAfter lower Decode i'm on conn %s\n", conn.RemoteAddr().String())
 		if errors.Is(err, net.ErrClosed) {
 			fmt.Printf("\nTCP network conn closed Error: %s\n", err)
 			return
@@ -161,14 +157,17 @@ func (t *TCPTransport) handleConn(conn net.Conn, outbound bool) {
 
 		msg.From = conn.RemoteAddr().String()
 
+		if msg.Stream {
+			peer.Wg.Add(1)
+			fmt.Printf("Waiting till the stream is done:\n")
+			peer.Wg.Wait()
+			fmt.Printf("The stream is done and completedi\n\n")
+			continue
+		}
+
+		t.rpcch <- msg
 		//when data is passed here,the consumer also runs of the same nodek
 		//thus it receives this msg
-		peer.Wg.Add(1)
-		fmt.Printf("\nWaiting till the stream is done: ")
-		t.rpcch <- msg
-		peer.Wg.Wait()
-		fmt.Printf("\nThe stream is done and completed")
-		// fmt.Printf("The message: %+v", msg)
 	}
 
 }

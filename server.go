@@ -5,7 +5,7 @@ import (
 	"encoding/gob"
 	"fmt"
 	"io"
-	"log"
+	"sync"
 	"time"
 
 	"github.com/eniimz/cas/p2p"
@@ -23,6 +23,7 @@ type FileServer struct {
 	bootstrappedNodes []string
 	quitch            chan struct{}
 	store             *store.Store
+	peerLock          sync.RWMutex
 	peers             map[string]p2p.Peer
 }
 
@@ -65,13 +66,14 @@ func (s *FileServer) broadcast(p *Message) error {
 		fmt.Printf("The err: %s\n", err)
 		return err
 	}
+
 	for _, peer := range s.peers {
+		peer.Send([]byte{p2p.IncomingMessage})
 		if err := peer.Send(buf.Bytes()); err != nil {
-			log.Fatal(err)
+			fmt.Printf("The err: %s\n", err)
+			return err
 		}
 	}
-
-	// time.Sleep(time.Second * 2)
 
 	return nil
 }
@@ -98,18 +100,18 @@ func (s *FileServer) Read(key string) (io.Reader, error) {
 
 	s.broadcast(&msg)
 
-	// time.Sleep(time.Second * 2)
+	time.Sleep(time.Millisecond * 2)
 
 	for _, peer := range s.peers {
 
-		fmt.Printf("receiving peer from the network")
-		fileBuffer := new(bytes.Buffer)
-		_, err := io.Copy(fileBuffer, io.LimitReader(peer, 24))
+		fmt.Printf("\nreceiving peer from the network")
+		buf := make([]byte, 18)
+		_, err := io.ReadFull(peer, buf)
 		if err != nil {
 			fmt.Printf("Error in receiving the msg from remote peer %s: ", err)
 			return nil, err
 		}
-
+		fmt.Printf("The buf: %s\n", string(buf))
 	}
 
 	fmt.Printf("received bytes from the network:")
@@ -137,10 +139,13 @@ func (s *FileServer) StoreData(key string, r io.Reader) error {
 
 	s.broadcast(&msgBuf)
 
+	time.Sleep(time.Second * 2)
+
 	for _, peer := range s.peers {
-		if err := peer.Send(buf.Bytes()); err != nil {
-			log.Fatal(err)
-		}
+		//a warning message to the peer that the file is coming
+		peer.Send([]byte{p2p.IncomingStream})
+		//then send the file
+		peer.Send(buf.Bytes())
 	}
 
 	return nil
@@ -159,10 +164,8 @@ func (s *FileServer) consumeOrCloseLoop() {
 	}()
 
 	for {
-		fmt.Printf("\nIm waiting on the channel to read")
 		select {
 		case msg := <-s.Transport.Consume():
-			fmt.Printf("\nThe recv msg: %s\n", string(msg.Payload))
 
 			var m Message
 			if err := gob.NewDecoder(bytes.NewReader(msg.Payload)).Decode(&m); err != nil {
@@ -228,16 +231,16 @@ func (s *FileServer) handleMessageGetFile(from string, msg MessageGetFile) error
 		return fmt.Errorf("peer not found in the peers map: %s", from)
 	}
 
-	fmt.Printf("Writing back to the network...")
-	n, err := io.Copy(peer, r)
+	rest, err := io.ReadAll(r)
+	n, err := peer.Write(rest)
 	if err != nil {
+		fmt.Printf("error while writing the rest of the file to the network: %s", err)
 		return err
 	}
 
-	fmt.Printf("\n[%s]Written %d bytes over to the network from %s", time.Now().Format("15:04:05.000"), n, from)
+	fmt.Printf("\n[%s]Written %d bytes over to the network from %s", s.Transport.Addr(), n, from)
 	peer.(*p2p.TCPPeer).Wg.Done()
 	return nil
-
 }
 
 func (s *FileServer) bootstrap(bootstrapNodes []string) {
@@ -250,7 +253,6 @@ func (s *FileServer) bootstrap(bootstrapNodes []string) {
 		}
 
 		go func(addr string) {
-			fmt.Printf("\nConnecting to remote peer: %s\n", addr)
 			if err := s.Transport.Dial(addr); err != nil {
 				fmt.Printf("Error while connecting to remote peer: %s", err)
 			}
@@ -264,13 +266,11 @@ func (s *FileServer) bootstrap(bootstrapNodes []string) {
 // to ensure server itself isnt included in the peers map
 // its already done so by the design of this logic..
 func (s *FileServer) OnPeer(p p2p.Peer) error {
-	// s.peerLock.Lock()
+	s.peerLock.Lock()
 
-	// defer s.peerLock.Unlock()
+	defer s.peerLock.Unlock()
 	// peer{ remoteAddr : remoteAddr}
 	s.peers[p.RemoteAddr().String()] = p
-
-	log.Printf("Connected with remote peer %+v", s.peers)
 
 	return nil
 }
@@ -281,7 +281,7 @@ func (s *FileServer) Start() error {
 		return err
 	}
 
-	fmt.Printf("\nListening on the port: %s", s.Transport.Addr().String())
+	fmt.Printf("\nListening on the port: %s", s.Transport.Addr())
 
 	//for each connection that is accepted, we check the bootstapped nodes len,
 	//if > 0, then we dial all those nodes

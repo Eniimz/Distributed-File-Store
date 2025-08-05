@@ -12,7 +12,7 @@ type Transport interface {
 	Consume() <-chan Message
 	Dial(string) error
 	Close() error
-	Addr() net.Addr
+	Addr() string
 }
 
 type Peer interface {

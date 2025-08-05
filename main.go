@@ -1,6 +1,8 @@
 package main
 
 import (
+	"bytes"
+	"fmt"
 	"log"
 	"strings"
 	"time"
@@ -42,21 +44,21 @@ func main() {
 	go func() {
 		log.Fatal(s1.Start())
 	}()
-
-	time.Sleep(2 * time.Second)
+	time.Sleep(2 * time.Millisecond)
 
 	go func() {
 		log.Fatal(s2.Start())
 	}()
 
-	time.Sleep(2 * time.Second)
+	time.Sleep(2 * time.Millisecond)
 
-	// data := bytes.NewReader([]byte("The big data file"))
-	// s2.StoreData("myPrivateDate", data)
+	for i := 0; i < 2; i++ {
+		data := bytes.NewReader([]byte("The big data file"))
+		s2.StoreData(fmt.Sprintf("myPrivateDate%d", i), data)
+		time.Sleep(time.Second * 1)
+	}
 
-	s2.Read("myPrivateDate")
+	// s2.Read("myPrivateDate")
 
 	select {}
 }
-
-// first check if the file is there, if its then read if not read from peers
