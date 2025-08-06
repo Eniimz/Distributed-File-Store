@@ -24,9 +24,12 @@ func NewTCPPeer(conn net.Conn, outbound bool) *TCPPeer {
 	}
 }
 
+func (p *TCPPeer) CloseStream() {
+	p.Wg.Done()
+}
+
 // This implements the Transport interface
 func (p *TCPTransport) Close() error {
-
 	return p.listener.Close()
 }
 
@@ -90,6 +93,8 @@ func (p *TCPPeer) Send(data []byte) error {
 	return err
 }
 
+// This implements the Transport interface
+// This shows the address of the node
 func (t *TCPTransport) Addr() string {
 	return t.ListenAddress
 }
@@ -104,7 +109,6 @@ func startAcceptLoop(t *TCPTransport) {
 		if err != nil {
 			fmt.Printf("TCP accept error: %s\n", err)
 		}
-
 		// we handle each new connection inside a different go routine
 		go t.handleConn(conn, false)
 	}
