@@ -1,7 +1,6 @@
 package store
 
 import (
-	"bytes"
 	"crypto/sha1"
 	"encoding/hex"
 	"errors"
@@ -118,48 +117,44 @@ func (s *Store) Write(key string, r io.Reader) (int64, error) {
 
 func (s *Store) WriteDecrypt(encKey []byte, key string, r io.Reader) (int64, error) {
 
-	pathKey := CASPathTransformFunc(key)
-	pathNameWithRoot := fmt.Sprintf("%s/%s", s.Root, pathKey.PathName)
-
-	if err := os.MkdirAll(pathNameWithRoot, os.ModePerm); err != nil {
-		fmt.Printf("An Error occured:%s ", err)
-		return 0, err
-	}
-
-	//we make a PathKey struct, so we can easily access the hashStr without /
-	fullPathWithRoot := fmt.Sprintf("%s/%s/%s", s.Root, pathKey.PathName, pathKey.FileName)
-
-	f, err := os.Create(fullPathWithRoot)
+	f, err := s.openForWriting(key)
 	if err != nil {
 		return 0, err
 	}
 
+	defer f.Close()
 	//f is the returned file that is created
 	n, err := encryption.CopyDecrypt(encKey, r, f)
 	if err != nil {
 		return 0, err
 	}
 
-	fmt.Printf("Written %d bytes to the disk %s\n", n, fullPathWithRoot)
+	fmt.Printf("Written %d bytes to the disk %s\n", n, f.Name())
 
 	return n, nil
 
 }
 
-func (s *Store) writeStream(key string, r io.Reader) (int64, error) {
+func (s *Store) openForWriting(key string) (*os.File, error) {
 
 	pathKey := CASPathTransformFunc(key)
 	pathNameWithRoot := fmt.Sprintf("%s/%s", s.Root, pathKey.PathName)
 
 	if err := os.MkdirAll(pathNameWithRoot, os.ModePerm); err != nil {
 		fmt.Printf("An Error occured:%s ", err)
-		return 0, err
+		return nil, err
 	}
 
 	//we make a PathKey struct, so we can easily access the hashStr without /
 	fullPathWithRoot := fmt.Sprintf("%s/%s/%s", s.Root, pathKey.PathName, pathKey.FileName)
 
-	f, err := os.Create(fullPathWithRoot)
+	return os.Create(fullPathWithRoot)
+
+}
+
+func (s *Store) writeStream(key string, r io.Reader) (int64, error) {
+
+	f, err := s.openForWriting(key)
 	if err != nil {
 		return 0, err
 	}
@@ -171,36 +166,34 @@ func (s *Store) writeStream(key string, r io.Reader) (int64, error) {
 		return 0, err
 	}
 
-	fmt.Printf("Written %d bytes to the disk %s\n", n, fullPathWithRoot)
+	fmt.Printf("\n\nWritten %d bytes to the disk %s\n", n, f.Name())
 
 	return n, nil
 }
 
 func (s *Store) Read(key string) (int64, io.Reader, error) {
 
-	f, err := s.readStream(key)
-	if err != nil {
-		return 0, nil, err
-	}
-
-	buf := new(bytes.Buffer)
-	n, err := io.Copy(buf, f)
-
-	if err := f.Close(); err != nil {
-		return 0, nil, err
-	}
-	return n, buf, err
-
+	return s.readStream(key)
 }
 
 // to give user more authority on what to do with the read data,
 // how and when to read or close it, nah.., actually making this private
-func (s *Store) readStream(key string) (io.ReadCloser, error) {
+func (s *Store) readStream(key string) (int64, io.ReadCloser, error) {
 
 	pathKey := CASPathTransformFunc(key)
 	pathNameWithRoot := fmt.Sprintf("%s/%s/%s", s.Root, pathKey.PathName, pathKey.FileName)
 
-	return os.Open(pathNameWithRoot)
+	file, err := os.Open(pathNameWithRoot)
+	if err != nil {
+		return 0, nil, err
+	}
+
+	fi, err := file.Stat()
+	if err != nil {
+		return 0, nil, err
+	}
+
+	return fi.Size(), file, nil
 }
 
 func (s *Store) Delete(key string) error {
@@ -211,13 +204,8 @@ func (s *Store) Delete(key string) error {
 		fmt.Printf("deleted [%s] from disk\n", pathKey.FileName)
 	}()
 
-	fmt.Printf("The root: %s\n", s.Root)
-	fmt.Printf("The full path: %s\n", pathKey.fullPath())
-	fmt.Printf("The first path: %s\n", pathKey.firstPath(pathKey.fullPath()))
-
 	firstPath := fmt.Sprintf("%s/%s", s.Root, pathKey.firstPath(pathKey.fullPath()))
 
-	fmt.Printf("The path name with root: %s\n", firstPath)
 	return os.RemoveAll(firstPath)
 
 }

@@ -32,7 +32,7 @@ func (d NOPDecoder) Decode(r io.Reader, msg *Message) error {
 		return err
 	}
 
-	fmt.Printf("Read %d byes from the network\n", n)
+	fmt.Printf("Received (%d) bytes from the network\n", n)
 
 	msg.Payload = buf[:n]
 

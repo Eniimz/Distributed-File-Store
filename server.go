@@ -70,12 +70,18 @@ func (s *FileServer) broadcast(p *Message) error {
 		return err
 	}
 
+	peers := []io.Writer{}
+
 	for _, peer := range s.peers {
-		peer.Send([]byte{p2p.IncomingMessage})
-		if err := peer.Send(buf.Bytes()); err != nil {
-			fmt.Printf("The err: %s\n", err)
-			return err
-		}
+		peers = append(peers, peer)
+	}
+
+	mw := io.MultiWriter(peers...)
+
+	mw.Write([]byte{p2p.IncomingMessage})
+	if _, err := mw.Write(buf.Bytes()); err != nil {
+		fmt.Printf("The err: %s\n", err)
+		return err
 	}
 
 	return nil
@@ -90,6 +96,12 @@ func (s *FileServer) Read(key string) (io.Reader, error) {
 			fmt.Printf("The error: %s", err)
 			return nil, err
 		}
+
+		if rc, ok := r.(io.ReadCloser); ok {
+			fmt.Printf("Closing the reader\n")
+			defer rc.Close()
+		}
+
 		return r, nil
 
 	}
@@ -104,24 +116,38 @@ func (s *FileServer) Read(key string) (io.Reader, error) {
 
 	s.broadcast(&msg)
 
-	// time.Sleep(time.Millisecond * 2)
+	// time.Sleep(time.Millisecond * 500)
 
+	//after decrypting it
 	for _, peer := range s.peers {
 
 		fmt.Printf("\nreceiving peer from the network")
-		var fileSize int64
 
+		var fileSize int64
 		binary.Read(peer, binary.LittleEndian, &fileSize)
 		n, err := s.store.WriteDecrypt(s.EncKey, key, io.LimitReader(peer, fileSize))
 		if err != nil {
 			fmt.Printf("Error in receiving the msg from remote peer %s: ", err)
 			return nil, err
 		}
+
 		peer.CloseStream()
 		fmt.Printf("received (%d) bytes from the network:\n", n)
 	}
 
-	return nil, nil
+	_, r, err := s.store.Read(key)
+	if err != nil {
+		fmt.Printf("The error: %s", err)
+		return nil, err
+	}
+
+	if rc, ok := r.(io.ReadCloser); ok {
+		fmt.Printf("Closing the reader\n")
+		defer rc.Close()
+	}
+
+	return r, nil
+
 }
 
 func (s *FileServer) StoreData(key string, r io.Reader) error {
@@ -146,20 +172,29 @@ func (s *FileServer) StoreData(key string, r io.Reader) error {
 
 	s.broadcast(&msgBuf)
 
-	time.Sleep(time.Second * 2)
+	//adding this timeSleep prevents the broadcasting, stream flag
+	//and file data to be sent in a single stream
+
+	//sending this stream flag after a delay allow
+	time.Sleep(time.Millisecond * 200)
+
+	peers := []io.Writer{}
 
 	for _, peer := range s.peers {
-		//a warning message to the peer that the file is coming
-		peer.Send([]byte{p2p.IncomingStream})
-		//then send the file
-		n, err := encryption.CopyEncrypt(s.EncKey, buf, peer)
-		if err != nil {
-			fmt.Printf("Error while encrypting the file: %s", err)
-			return err
-		}
-		fmt.Printf("Encrypted %d bytes\n", n)
-
+		peers = append(peers, peer)
 	}
+
+	mw := io.MultiWriter(peers...)
+
+	//a warning message to the peer that the file is coming
+	mw.Write([]byte{p2p.IncomingStream})
+	//then send the file
+	n, err = encryption.CopyEncrypt(s.EncKey, buf, mw)
+	if err != nil {
+		fmt.Printf("Error while encrypting the file: %s", err)
+		return err
+	}
+	fmt.Printf("Encrypted %d bytes\n", n)
 
 	return nil
 }
@@ -179,7 +214,6 @@ func (s *FileServer) consumeOrCloseLoop() {
 	for {
 		select {
 		case msg := <-s.Transport.Consume():
-			fmt.Printf("The recv message: %+v\n", msg)
 
 			var m Message
 			if err := gob.NewDecoder(bytes.NewReader(msg.Payload)).Decode(&m); err != nil {
@@ -240,6 +274,12 @@ func (s *FileServer) handleMessageGetFile(from string, msg MessageGetFile) error
 		return err
 	}
 
+	rc, ok := r.(io.ReadCloser)
+	if ok {
+		fmt.Printf("Closing the reader\n")
+		defer rc.Close()
+	}
+
 	peer, ok := s.peers[from]
 	if !ok {
 		return fmt.Errorf("peer not found in the peers map: %s", from)
@@ -248,15 +288,12 @@ func (s *FileServer) handleMessageGetFile(from string, msg MessageGetFile) error
 	peer.Send([]byte{p2p.IncomingStream})
 
 	binary.Write(peer, binary.LittleEndian, fileSize)
-	n, err := io.Copy(peer, r)
+	_, err = io.Copy(peer, r)
 	if err != nil {
 		fmt.Printf("error while writing the rest of the file to the network: %s", err)
 		return err
 	}
 
-	time.Sleep(time.Second * 2)
-
-	fmt.Printf("\n[%s]Written %d bytes over to the network", s.Transport.Addr(), n)
 	return nil
 }
 
