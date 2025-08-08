@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bytes"
 	"log"
 	"strings"
 	"time"
@@ -50,13 +51,17 @@ func main() {
 
 	time.Sleep(2 * time.Second)
 
-	// for i := 0; i < 1; i++ {
-	// 	// s2.StoreData("myPrivateDate", bytes.NewReader([]byte("The big data file")))
-	// 	time.Sleep(time.Second * 1)
-	// }
+	for i := 0; i < 1; i++ {
+		s2.StoreData("myPrivateDate", bytes.NewReader([]byte("The big data file")))
+		time.Sleep(time.Second * 1)
+	}
+
+	if err := s2.store.Delete("myPrivateDate"); err != nil {
+		log.Fatal(err)
+	}
+	time.Sleep(time.Second * 1)
 
 	s2.Read("myPrivateDate")
-	// s2.Read("myPrivateDate")
 
 	select {}
 }

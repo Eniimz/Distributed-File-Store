@@ -162,6 +162,7 @@ func (t *TCPTransport) handleConn(conn net.Conn, outbound bool) {
 		msg.From = conn.RemoteAddr().String()
 
 		if msg.Stream {
+			fmt.Printf("Stream is true\n")
 			peer.Wg.Add(1)
 			fmt.Printf("Waiting till the stream is done:\n")
 			peer.Wg.Wait()

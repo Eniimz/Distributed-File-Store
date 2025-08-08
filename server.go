@@ -2,12 +2,14 @@ package main
 
 import (
 	"bytes"
+	"encoding/binary"
 	"encoding/gob"
 	"fmt"
 	"io"
 	"sync"
 	"time"
 
+	"github.com/eniimz/cas/encryption"
 	"github.com/eniimz/cas/p2p"
 	"github.com/eniimz/cas/store"
 )
@@ -25,6 +27,7 @@ type FileServer struct {
 	store             *store.Store
 	peerLock          sync.RWMutex
 	peers             map[string]p2p.Peer
+	EncKey            []byte
 }
 
 type Message struct {
@@ -50,7 +53,7 @@ func NewFileServer(transportOpts *p2p.TCPTransport, nodes []string, storeOpts *s
 		quitch:            make(chan struct{}),
 		store:             storeOpts,
 		peers:             make(map[string]p2p.Peer),
-		// onPeer:     	       func(p p2p.Peer) error { return nil },
+		EncKey:            encryption.NewEncryptionKey(),
 	}
 }
 
@@ -82,7 +85,7 @@ func (s *FileServer) Read(key string) (io.Reader, error) {
 
 	if s.store.Has(key) {
 		fmt.Printf("The data exists in local disk, reading from the local disk...\n")
-		r, err := s.store.Read(key)
+		_, r, err := s.store.Read(key)
 		if err != nil {
 			fmt.Printf("The error: %s", err)
 			return nil, err
@@ -106,14 +109,15 @@ func (s *FileServer) Read(key string) (io.Reader, error) {
 	for _, peer := range s.peers {
 
 		fmt.Printf("\nreceiving peer from the network")
-		buf := make([]byte, 18)
-		n, err := io.ReadFull(peer, buf)
+		var fileSize int64
+
+		binary.Read(peer, binary.LittleEndian, &fileSize)
+		n, err := s.store.WriteDecrypt(s.EncKey, key, io.LimitReader(peer, fileSize))
 		if err != nil {
 			fmt.Printf("Error in receiving the msg from remote peer %s: ", err)
 			return nil, err
 		}
 		peer.CloseStream()
-
 		fmt.Printf("received (%d) bytes from the network:\n", n)
 	}
 
@@ -134,8 +138,9 @@ func (s *FileServer) StoreData(key string, r io.Reader) error {
 
 	msgBuf := Message{
 		Payload: MessageStoreFile{
-			Key:  key,
-			Size: n,
+			Key: key,
+			// 16 bytes for the iv added by the encryptor
+			Size: n + 16,
 		},
 	}
 
@@ -147,7 +152,13 @@ func (s *FileServer) StoreData(key string, r io.Reader) error {
 		//a warning message to the peer that the file is coming
 		peer.Send([]byte{p2p.IncomingStream})
 		//then send the file
-		peer.Send(buf.Bytes())
+		n, err := encryption.CopyEncrypt(s.EncKey, buf, peer)
+		if err != nil {
+			fmt.Printf("Error while encrypting the file: %s", err)
+			return err
+		}
+		fmt.Printf("Encrypted %d bytes\n", n)
+
 	}
 
 	return nil
@@ -224,7 +235,7 @@ func (s *FileServer) handleMessageGetFile(from string, msg MessageGetFile) error
 		return fmt.Errorf("data couldnt be found in the remote peer: %s", from)
 	}
 
-	r, err := s.store.Read(msg.Key)
+	fileSize, r, err := s.store.Read(msg.Key)
 	if err != nil {
 		return err
 	}
@@ -234,11 +245,9 @@ func (s *FileServer) handleMessageGetFile(from string, msg MessageGetFile) error
 		return fmt.Errorf("peer not found in the peers map: %s", from)
 	}
 
-	if err := peer.Send([]byte{p2p.IncomingStream}); err != nil {
-		fmt.Printf("error while sending the incoming stream to the peer: %s", err)
-	}
-
 	peer.Send([]byte{p2p.IncomingStream})
+
+	binary.Write(peer, binary.LittleEndian, fileSize)
 	n, err := io.Copy(peer, r)
 	if err != nil {
 		fmt.Printf("error while writing the rest of the file to the network: %s", err)

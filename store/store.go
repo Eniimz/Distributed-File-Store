@@ -10,6 +10,8 @@ import (
 	"io/fs"
 	"os"
 	"strings"
+
+	"github.com/eniimz/cas/encryption"
 )
 
 // reading, writing to a store
@@ -114,20 +116,33 @@ func (s *Store) Write(key string, r io.Reader) (int64, error) {
 	return s.writeStream(key, r)
 }
 
-func (s *Store) Read(key string) (io.Reader, error) {
+func (s *Store) WriteDecrypt(encKey []byte, key string, r io.Reader) (int64, error) {
 
-	f, err := s.readStream(key)
+	pathKey := CASPathTransformFunc(key)
+	pathNameWithRoot := fmt.Sprintf("%s/%s", s.Root, pathKey.PathName)
+
+	if err := os.MkdirAll(pathNameWithRoot, os.ModePerm); err != nil {
+		fmt.Printf("An Error occured:%s ", err)
+		return 0, err
+	}
+
+	//we make a PathKey struct, so we can easily access the hashStr without /
+	fullPathWithRoot := fmt.Sprintf("%s/%s/%s", s.Root, pathKey.PathName, pathKey.FileName)
+
+	f, err := os.Create(fullPathWithRoot)
 	if err != nil {
-		return nil, err
+		return 0, err
 	}
 
-	buf := new(bytes.Buffer)
-	_, err = io.Copy(buf, f)
-
-	if err := f.Close(); err != nil {
-		return nil, err
+	//f is the returned file that is created
+	n, err := encryption.CopyDecrypt(encKey, r, f)
+	if err != nil {
+		return 0, err
 	}
-	return buf, err
+
+	fmt.Printf("Written %d bytes to the disk %s\n", n, fullPathWithRoot)
+
+	return n, nil
 
 }
 
@@ -149,6 +164,7 @@ func (s *Store) writeStream(key string, r io.Reader) (int64, error) {
 		return 0, err
 	}
 
+	defer f.Close()
 	//f is the returned file that is created
 	n, err := io.Copy(f, r)
 	if err != nil {
@@ -158,6 +174,23 @@ func (s *Store) writeStream(key string, r io.Reader) (int64, error) {
 	fmt.Printf("Written %d bytes to the disk %s\n", n, fullPathWithRoot)
 
 	return n, nil
+}
+
+func (s *Store) Read(key string) (int64, io.Reader, error) {
+
+	f, err := s.readStream(key)
+	if err != nil {
+		return 0, nil, err
+	}
+
+	buf := new(bytes.Buffer)
+	n, err := io.Copy(buf, f)
+
+	if err := f.Close(); err != nil {
+		return 0, nil, err
+	}
+	return n, buf, err
+
 }
 
 // to give user more authority on what to do with the read data,
@@ -175,11 +208,16 @@ func (s *Store) Delete(key string) error {
 	pathKey := CASPathTransformFunc(key)
 
 	defer func() {
-		fmt.Printf("deleted [%s] from disk", pathKey.FileName)
+		fmt.Printf("deleted [%s] from disk\n", pathKey.FileName)
 	}()
+
+	fmt.Printf("The root: %s\n", s.Root)
+	fmt.Printf("The full path: %s\n", pathKey.fullPath())
+	fmt.Printf("The first path: %s\n", pathKey.firstPath(pathKey.fullPath()))
 
 	firstPath := fmt.Sprintf("%s/%s", s.Root, pathKey.firstPath(pathKey.fullPath()))
 
+	fmt.Printf("The path name with root: %s\n", firstPath)
 	return os.RemoveAll(firstPath)
 
 }
