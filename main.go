@@ -2,8 +2,9 @@ package main
 
 import (
 	"bytes"
-	"fmt"
+	"io"
 	"log"
+	"os"
 	"strings"
 	"time"
 
@@ -39,6 +40,20 @@ func makeServer(listenAddress string, nodes ...string) *FileServer {
 	return s
 }
 
+func readFile(filePath string) (io.Reader, error) {
+
+	file, err := os.Open(filePath)
+	if err != nil {
+		log.Fatal(err)
+	}
+	defer file.Close()
+
+	buf := new(bytes.Buffer)
+	buf.ReadFrom(file)
+
+	return buf, nil
+}
+
 func main() {
 
 	s1 := makeServer(":3001")
@@ -61,20 +76,32 @@ func main() {
 
 	time.Sleep(2 * time.Second)
 
-	for i := 0; i < 20; i++ {
+	// for i := 0; i < 20; i++ {
 
-		key := fmt.Sprintf("myPrivateDate_%d", i)
-		s2.StoreData(key, bytes.NewReader([]byte("The big data file")))
-
-		if err := s2.store.Delete(key); err != nil {
-			log.Fatal(err)
-		}
-
-		if _, err := s2.Read(key); err != nil {
-			log.Fatal(err)
-		}
-
+	// key := fmt.Sprintf("myPrivateDate_%d", i)
+	data, err := readFile("proposal.pdf")
+	if err != nil {
+		log.Fatal(err)
 	}
+	key := "proposal.pdf"
+	s2.StoreData(key, data)
+
+	// if err := s2.store.Delete(key); err != nil {
+	// 	log.Fatal(err)
+	// }
+
+	// if _, err := s2.Read(key); err != nil {
+	// 	log.Fatal(err)
+	// }
+
+	// }
+
+	// r, err := readFile("proposal.pdf")
+	// if err != nil {
+	// 	log.Fatal(err)
+	// }
+
+	// fmt.Println("This the read data of the file: ", r)
 
 	select {}
 }

@@ -114,7 +114,8 @@ func (s *FileServer) Read(key string) (io.Reader, error) {
 
 	msg := Message{
 		Payload: MessageGetFile{
-			Key: key,
+			Key:     encryption.HashKey(key),
+			OwnerID: s.NodeID,
 		},
 	}
 
@@ -168,7 +169,7 @@ func (s *FileServer) StoreData(key string, r io.Reader) error {
 
 	msgBuf := Message{
 		Payload: MessageStoreFile{
-			Key:     key,
+			Key:     encryption.HashKey(key),
 			OwnerID: s.NodeID,
 			// 16 bytes for the iv added by the encryptor
 			Size: n + 16,
