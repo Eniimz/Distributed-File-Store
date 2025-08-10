@@ -29,6 +29,7 @@ func (d NOPDecoder) Decode(r io.Reader, msg *Message) error {
 	//reader is a *bufio.Reader, wrapping r, which is net.Conn
 	n, err := r.Read(buf)
 	if err != nil {
+		fmt.Printf("Error in reading the message: %s", err)
 		return err
 	}
 

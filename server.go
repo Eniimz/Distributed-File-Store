@@ -28,6 +28,7 @@ type FileServer struct {
 	peerLock          sync.RWMutex
 	peers             map[string]p2p.Peer
 	EncKey            []byte
+	NodeID            string
 }
 
 type Message struct {
@@ -35,15 +36,17 @@ type Message struct {
 }
 
 type MessageStoreFile struct {
-	Key  string
-	Size int64
+	Key     string
+	Size    int64
+	OwnerID string
 }
 
 type MessageGetFile struct {
-	Key string
+	Key     string
+	OwnerID string
 }
 
-func NewFileServer(transportOpts *p2p.TCPTransport, nodes []string, storeOpts *store.Store) *FileServer {
+func NewFileServer(transportOpts *p2p.TCPTransport, nodes []string, storeOpts *store.Store, nodeId string) *FileServer {
 
 	return &FileServer{
 		pathTransFormFunc: store.DefaultPathTransformFunc,
@@ -54,6 +57,7 @@ func NewFileServer(transportOpts *p2p.TCPTransport, nodes []string, storeOpts *s
 		store:             storeOpts,
 		peers:             make(map[string]p2p.Peer),
 		EncKey:            encryption.NewEncryptionKey(),
+		NodeID:            nodeId,
 	}
 }
 
@@ -89,9 +93,9 @@ func (s *FileServer) broadcast(p *Message) error {
 
 func (s *FileServer) Read(key string) (io.Reader, error) {
 
-	if s.store.Has(key) {
+	if s.store.Has(key, s.NodeID) {
 		fmt.Printf("The data exists in local disk, reading from the local disk...\n")
-		_, r, err := s.store.Read(key)
+		_, r, err := s.store.Read(key, s.NodeID)
 		if err != nil {
 			fmt.Printf("The error: %s", err)
 			return nil, err
@@ -125,7 +129,7 @@ func (s *FileServer) Read(key string) (io.Reader, error) {
 
 		var fileSize int64
 		binary.Read(peer, binary.LittleEndian, &fileSize)
-		n, err := s.store.WriteDecrypt(s.EncKey, key, io.LimitReader(peer, fileSize))
+		n, err := s.store.WriteDecrypt(s.EncKey, key, io.LimitReader(peer, fileSize), s.NodeID)
 		if err != nil {
 			fmt.Printf("Error in receiving the msg from remote peer %s: ", err)
 			return nil, err
@@ -135,7 +139,7 @@ func (s *FileServer) Read(key string) (io.Reader, error) {
 		fmt.Printf("received (%d) bytes from the network:\n", n)
 	}
 
-	_, r, err := s.store.Read(key)
+	_, r, err := s.store.Read(key, s.NodeID)
 	if err != nil {
 		fmt.Printf("The error: %s", err)
 		return nil, err
@@ -157,14 +161,15 @@ func (s *FileServer) StoreData(key string, r io.Reader) error {
 		tee = io.TeeReader(r, buf)
 	)
 
-	n, err := s.store.Write(key, tee)
+	n, err := s.store.Write(key, tee, s.NodeID)
 	if err != nil {
 		return err
 	}
 
 	msgBuf := Message{
 		Payload: MessageStoreFile{
-			Key: key,
+			Key:     key,
+			OwnerID: s.NodeID,
 			// 16 bytes for the iv added by the encryptor
 			Size: n + 16,
 		},
@@ -254,7 +259,7 @@ func (s *FileServer) handleMessageStoreFile(from string, msg MessageStoreFile) e
 		return fmt.Errorf("peer (%s) could not be found in the peer list", from)
 	}
 
-	_, err := s.store.Write(msg.Key, io.LimitReader(peer, msg.Size))
+	_, err := s.store.Write(msg.Key, io.LimitReader(peer, msg.Size), msg.OwnerID)
 	if err != nil {
 		return err
 	}
@@ -265,11 +270,11 @@ func (s *FileServer) handleMessageStoreFile(from string, msg MessageStoreFile) e
 
 func (s *FileServer) handleMessageGetFile(from string, msg MessageGetFile) error {
 
-	if !s.store.Has(msg.Key) {
+	if !s.store.Has(msg.Key, msg.OwnerID) {
 		return fmt.Errorf("data couldnt be found in the remote peer: %s", from)
 	}
 
-	fileSize, r, err := s.store.Read(msg.Key)
+	fileSize, r, err := s.store.Read(msg.Key, msg.OwnerID)
 	if err != nil {
 		return err
 	}

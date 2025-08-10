@@ -21,16 +21,16 @@ func TestStore(t *testing.T) {
 		key := fmt.Sprintf("vinland_%d", i)
 		data := []byte("Some jpeg file")
 
-		_, err := s.Write(key, bytes.NewReader(data))
+		_, err := s.Write(key, bytes.NewReader(data), "test")
 		if err != nil {
 			t.Error(err)
 		}
 
-		if ok := s.Has(key); !ok {
+		if ok := s.Has(key, "test"); !ok {
 			t.Error("Expected to have the key\n")
 		}
 
-		_, _, err = s.Read(key)
+		_, _, err = s.Read(key, "test")
 		if err != nil {
 			t.Error(err)
 		}
@@ -47,7 +47,7 @@ func TestStore(t *testing.T) {
 			t.Error(err)
 		}
 
-		if ok := s.Has(key); ok {
+		if ok := s.Has(key, "test"); ok {
 			t.Error("Expected to not have the key\n")
 		}
 	}

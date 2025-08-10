@@ -7,6 +7,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/eniimz/cas/encryption"
 	"github.com/eniimz/cas/p2p"
 	"github.com/eniimz/cas/store"
 )
@@ -20,6 +21,8 @@ func makeServer(listenAddress string, nodes ...string) *FileServer {
 		Decoder:       p2p.NOPDecoder{},
 	}
 
+	nodeId := encryption.GenerateId()
+
 	t := p2p.NewTCPTransport(transportOpts)
 
 	storeOpts := store.StoreOpts{
@@ -29,7 +32,7 @@ func makeServer(listenAddress string, nodes ...string) *FileServer {
 
 	store := store.NewStore(storeOpts)
 
-	s := NewFileServer(t, nodes, store)
+	s := NewFileServer(t, nodes, store, nodeId)
 
 	t.OnPeer = s.OnPeer
 
@@ -38,9 +41,9 @@ func makeServer(listenAddress string, nodes ...string) *FileServer {
 
 func main() {
 
-	s1 := makeServer(":3000")
-	s2 := makeServer(":4000", ":3000")
-	s3 := makeServer(":5000", ":3000", ":4000")
+	s1 := makeServer(":3001")
+	s2 := makeServer(":4001", ":3001")
+	s3 := makeServer(":5001", ":3001", ":4001")
 
 	go func() {
 		log.Fatal(s1.Start())

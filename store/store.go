@@ -70,10 +70,10 @@ func NewStore(opts StoreOpts) *Store {
 	}
 }
 
-func (s *Store) Has(key string) bool {
+func (s *Store) Has(key string, id string) bool {
 
 	pathKey := CASPathTransformFunc(key)
-	pathNameWithRoot := fmt.Sprintf("%s/%s", s.Root, pathKey.PathName)
+	pathNameWithRoot := fmt.Sprintf("%s/%s/%s", s.Root, id, pathKey.PathName)
 
 	_, err := os.Stat(pathNameWithRoot)
 	if errors.Is(err, fs.ErrNotExist) {
@@ -111,13 +111,13 @@ func (s *Store) clearAll() error {
 	return os.RemoveAll(s.Root)
 }
 
-func (s *Store) Write(key string, r io.Reader) (int64, error) {
-	return s.writeStream(key, r)
+func (s *Store) Write(key string, r io.Reader, id string) (int64, error) {
+	return s.writeStream(key, r, id)
 }
 
-func (s *Store) WriteDecrypt(encKey []byte, key string, r io.Reader) (int64, error) {
+func (s *Store) WriteDecrypt(encKey []byte, key string, r io.Reader, id string) (int64, error) {
 
-	f, err := s.openForWriting(key)
+	f, err := s.openForWriting(key, id)
 	if err != nil {
 		return 0, err
 	}
@@ -135,10 +135,10 @@ func (s *Store) WriteDecrypt(encKey []byte, key string, r io.Reader) (int64, err
 
 }
 
-func (s *Store) openForWriting(key string) (*os.File, error) {
+func (s *Store) openForWriting(key string, id string) (*os.File, error) {
 
 	pathKey := CASPathTransformFunc(key)
-	pathNameWithRoot := fmt.Sprintf("%s/%s", s.Root, pathKey.PathName)
+	pathNameWithRoot := fmt.Sprintf("%s/%s/%s", s.Root, id, pathKey.PathName)
 
 	if err := os.MkdirAll(pathNameWithRoot, os.ModePerm); err != nil {
 		fmt.Printf("An Error occured:%s ", err)
@@ -146,15 +146,15 @@ func (s *Store) openForWriting(key string) (*os.File, error) {
 	}
 
 	//we make a PathKey struct, so we can easily access the hashStr without /
-	fullPathWithRoot := fmt.Sprintf("%s/%s/%s", s.Root, pathKey.PathName, pathKey.FileName)
+	fullPathWithRoot := fmt.Sprintf("%s/%s/%s/%s", s.Root, id, pathKey.PathName, pathKey.FileName)
 
 	return os.Create(fullPathWithRoot)
 
 }
 
-func (s *Store) writeStream(key string, r io.Reader) (int64, error) {
+func (s *Store) writeStream(key string, r io.Reader, id string) (int64, error) {
 
-	f, err := s.openForWriting(key)
+	f, err := s.openForWriting(key, id)
 	if err != nil {
 		return 0, err
 	}
@@ -171,17 +171,17 @@ func (s *Store) writeStream(key string, r io.Reader) (int64, error) {
 	return n, nil
 }
 
-func (s *Store) Read(key string) (int64, io.Reader, error) {
+func (s *Store) Read(key string, id string) (int64, io.Reader, error) {
 
-	return s.readStream(key)
+	return s.readStream(key, id)
 }
 
 // to give user more authority on what to do with the read data,
 // how and when to read or close it, nah.., actually making this private
-func (s *Store) readStream(key string) (int64, io.ReadCloser, error) {
+func (s *Store) readStream(key string, id string) (int64, io.ReadCloser, error) {
 
 	pathKey := CASPathTransformFunc(key)
-	pathNameWithRoot := fmt.Sprintf("%s/%s/%s", s.Root, pathKey.PathName, pathKey.FileName)
+	pathNameWithRoot := fmt.Sprintf("%s/%s/%s/%s", s.Root, id, pathKey.PathName, pathKey.FileName)
 
 	file, err := os.Open(pathNameWithRoot)
 	if err != nil {
