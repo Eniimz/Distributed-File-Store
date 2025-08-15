@@ -45,8 +45,13 @@ type TCPTransportOpts struct {
 type TCPTransport struct {
 	TCPTransportOpts
 	listener net.Listener
-	OnPeer   func(Peer) error
+	OnPeer   func(Peer, string) error
 	rpcch    chan Message
+}
+
+type MetaData struct {
+	ListenAddress string
+	NodeID        string
 }
 
 func NewTCPTransport(opts TCPTransportOpts) *TCPTransport {
@@ -71,9 +76,13 @@ func (t *TCPTransport) ListenAndAccept() error {
 		return err
 	}
 
+	metadata := MetaData{
+		ListenAddress: t.ListenAddress,
+		NodeID:        t.NodeID,
+	}
 	// log.Println(t.listener)
 
-	go startAcceptLoop(t, t.NodeID)
+	go startAcceptLoop(t, metadata)
 
 	return nil
 
@@ -87,10 +96,15 @@ func (t *TCPTransport) Dial(listenAddress string) error {
 		return err
 	}
 
+	metadata := MetaData{
+		ListenAddress: t.ListenAddress,
+		NodeID:        t.NodeID,
+	}
+
 	//after dialing we also have to listen to that connection (peer)
 	//so we can send data back and forth
 	fmt.Printf("Now handling the dialed connection\n")
-	go t.handleConn(conn, true, t.NodeID)
+	go t.handleConn(conn, true, metadata)
 
 	return nil
 
@@ -111,19 +125,19 @@ func (t *TCPTransport) Consume() <-chan Message {
 	return t.rpcch
 }
 
-func startAcceptLoop(t *TCPTransport, nodeID string) {
+func startAcceptLoop(t *TCPTransport, metadata MetaData) {
 	for {
 		conn, err := t.listener.Accept()
 		if err != nil {
 			fmt.Printf("TCP accept error: %s\n", err)
 		}
 		// we handle each new connection inside a different go routine
-		go t.handleConn(conn, false, nodeID)
+		go t.handleConn(conn, false, metadata)
 	}
 
 }
 
-func (t *TCPTransport) handleConn(conn net.Conn, outbound bool, nodeID string) {
+func (t *TCPTransport) handleConn(conn net.Conn, outbound bool, metadata MetaData) {
 
 	var err error
 
@@ -139,8 +153,8 @@ func (t *TCPTransport) handleConn(conn net.Conn, outbound bool, nodeID string) {
 
 	//peer here is of type *TCPPeer struct
 	//this Handshake func expects a param that implements Peer interface
-	if err := t.HandshakeFunc(peer, nodeID); err != nil {
-		// conn.Close()
+	remotePeerId, err := t.HandshakeFunc(peer, metadata)
+	if err != nil {
 		fmt.Printf("TCP Handshake error: %s", err)
 		return
 	}
@@ -149,7 +163,7 @@ func (t *TCPTransport) handleConn(conn net.Conn, outbound bool, nodeID string) {
 	//and invoke it, otherwise we dont
 
 	if t.OnPeer != nil {
-		if err = t.OnPeer(peer); err != nil { //when some node makes a connection to this node
+		if err = t.OnPeer(peer, remotePeerId); err != nil { //when some node makes a connection to this node
 			fmt.Printf("Peer error occureed... ")
 			return
 		}
@@ -169,7 +183,8 @@ func (t *TCPTransport) handleConn(conn net.Conn, outbound bool, nodeID string) {
 			continue
 		}
 
-		msg.From = conn.RemoteAddr().String()
+		msg.From = conn.RemoteAddr().Network()
+		msg.RemotePeerId = remotePeerId
 
 		if msg.Stream {
 			peer.Wg.Add(1)

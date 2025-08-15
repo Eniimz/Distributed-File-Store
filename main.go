@@ -59,7 +59,7 @@ func main() {
 
 	s1 := makeServer(":3001")
 	s2 := makeServer(":4001", ":3001")
-	// s3 := makeServer(":5001", ":3001", ":4001")
+	s3 := makeServer(":5001", ":3001")
 
 	go func() {
 		log.Fatal(s1.Start())
@@ -71,9 +71,9 @@ func main() {
 	}()
 	// time.Sleep(2 * time.Second)
 
-	// go func() {
-	// 	log.Fatal(s3.Start())
-	// }()
+	go func() {
+		log.Fatal(s3.Start())
+	}()
 
 	// time.Sleep(2 * time.Second)
 

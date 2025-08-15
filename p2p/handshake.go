@@ -1,6 +1,8 @@
 package p2p
 
 import (
+	"bytes"
+	"encoding/gob"
 	"fmt"
 )
 
@@ -21,26 +23,52 @@ import (
 //cant use this as func in a for loop
 // var ErrorInvalidHandshake = errors.New("invalid handshake")
 
-type Handshake func(Peer, string) error
+type Message struct {
+	Payload any
+}
 
-func NOPHandshakeFunc(Peer, string) error { return nil }
+type Handshake func(Peer, MetaData) (string, error)
 
-func AddressExchangeHandshakeFunc(peer Peer, nodeId string) error {
+func NOPHandshakeFunc(Peer, MetaData) error { return nil }
 
-	fmt.Printf("starting handshake by sending nodeId (%s) for node %s\n", nodeId, peer.RemoteAddr())
-	if err := peer.Send([]byte(nodeId)); err != nil {
+func AddressExchangeHandshakeFunc(peer Peer, metadata MetaData) (string, error) {
+
+	if err := sendHandshake(metadata, peer); err != nil {
+		return "", err
+	}
+
+	data, err := receiveHandshake(metadata, peer)
+	if err != nil {
+		return "", err
+	}
+
+	return data, nil
+}
+
+func sendHandshake(metadata MetaData, peer Peer) error {
+
+	buf := new(bytes.Buffer)
+
+	if err := gob.NewEncoder(buf).Encode(metadata); err != nil {
+		fmt.Printf("The err: %s\n", err)
+		return err
+	}
+
+	if err := peer.Send(buf.Bytes()); err != nil {
 		fmt.Printf("The handshake error: %s\n", err)
 		return err
 	}
-	fmt.Printf("Reading now...\n")
-	buf := make([]byte, 1028)
-	n, err := peer.Read(buf)
-	if err != nil {
-		fmt.Printf("Error while reading the remote nodeId: %s\n", err)
-		return err
-	}
-
-	fmt.Printf("The no of bytes read for handshake from node %s: %s\n", peer.RemoteAddr(), string(buf[:n]))
 
 	return nil
+}
+
+func receiveHandshake(metadata MetaData, peer Peer) (string, error) {
+
+	var m MetaData
+
+	if err := gob.NewDecoder(bytes.NewReader(metadata)).Decode(&m); err != nil {
+		fmt.Printf("The error: %s\n", err)
+	}
+
+	return string(buf[:n]), nil
 }

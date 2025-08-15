@@ -6,8 +6,8 @@ const (
 )
 
 type Message struct {
-	Payload []byte
-	From    string
-	PeerId  string
-	Stream  bool
+	Payload      []byte
+	From         string
+	RemotePeerId string
+	Stream       bool
 }

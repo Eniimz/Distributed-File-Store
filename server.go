@@ -46,8 +46,9 @@ type MessageGetFile struct {
 	OwnerID string
 }
 
-type MessageGetPeers struct {
-	Address string
+type MessagePingPeers struct{}
+type MessagePongPeers struct {
+	Peers map[string]p2p.Peer
 }
 
 func NewFileServer(transportOpts *p2p.TCPTransport, nodes []string, storeOpts *store.Store, nodeId string) *FileServer {
@@ -199,6 +200,7 @@ func (s *FileServer) StoreData(key string, r io.Reader) error {
 	//a warning message to the peer that the file is coming
 	mw.Write([]byte{p2p.IncomingStream})
 	//then send the file
+
 	n, err = encryption.CopyEncrypt(s.EncKey, buf, mw)
 	if err != nil {
 		fmt.Printf("Error while encrypting the file: %s", err)
@@ -229,7 +231,7 @@ func (s *FileServer) consumeOrCloseLoop() {
 			if err := gob.NewDecoder(bytes.NewReader(msg.Payload)).Decode(&m); err != nil {
 				fmt.Printf("The error: %s\n", err)
 			}
-			if err := s.handleMessage(msg.From, msg.PeerId, &m); err != nil {
+			if err := s.handleMessage(msg.From, msg.RemotePeerId, &m); err != nil {
 				fmt.Printf("handle Message Error: %s", err)
 			}
 		case <-s.quitch:
@@ -250,8 +252,57 @@ func (s *FileServer) handleMessage(from string, incomingPeerID string, msg *Mess
 		if err := s.handleMessageGetFile(from, incomingPeerID, v); err != nil {
 			return err
 		}
+	case MessagePingPeers:
+		if err := s.handleMessagePingPeers(from, incomingPeerID, v); err != nil {
+			return err
+		}
+	case MessagePongPeers:
+		if err := s.handleMessagePongPeers(from, incomingPeerID, v); err != nil {
+			return err
+		}
 
 	}
+
+	return nil
+}
+
+func (s *FileServer) handleMessagePingPeers(from, incomingPeerID string, msg MessagePingPeers) error {
+
+	fmt.Printf("Handling the incoming peer: %s\n", incomingPeerID)
+
+	fmt.Printf("The peers map:\n")
+	for key, peer := range s.peers {
+		fmt.Printf("Peer (%s):%+v \n", key, peer)
+	}
+
+	fmt.Printf("After Removing the remote peer before sending new peers\n")
+	peers := make(map[string]string)
+	for key, peer := range s.peers {
+		if key != incomingPeerID {
+			peers[key] = peer.RemoteAddr().String()
+		}
+	}
+
+	fmt.Printf("The newly filtered peers...")
+	for key, addr := range peers {
+		fmt.Printf("Peer(%s): %s", key, addr)
+	}
+
+	// pongMessage := &Message{
+	// 	Payload: MessagePongPeers{
+	// 		Peers: peers,
+	// 	},
+	// }
+	// fmt.Printf("Pinging the peers..\n")
+	// s.broadcast(pongMessage)
+
+	return nil
+
+}
+
+func (s *FileServer) handleMessagePongPeers(from string, incomingPeerID string, msg MessagePongPeers) error {
+
+	fmt.Printf("Hnadling the Pong Message: %+v\n", msg)
 
 	return nil
 }
@@ -321,6 +372,15 @@ func (s *FileServer) bootstrap(bootstrapNodes []string) {
 				fmt.Printf("Error while connecting to remote peer: %s", err)
 			}
 
+			time.Sleep(time.Millisecond * 200)
+
+			//pinging the remote peers of the just accepted conn
+			msg := Message{
+				Payload: MessagePingPeers{},
+			}
+
+			s.broadcast(&msg)
+
 		}(addr)
 
 	}
@@ -329,12 +389,14 @@ func (s *FileServer) bootstrap(bootstrapNodes []string) {
 
 // to ensure server itself isnt included in the peers map
 // its already done so by the design of this logic..
-func (s *FileServer) OnPeer(p p2p.Peer) error {
+func (s *FileServer) OnPeer(p p2p.Peer, remotePeerId string) error {
 	s.peerLock.Lock()
 
+	//in case of multiple conn accepted, peers map will be written to concurrently
+	//peers map => not thread safe
 	defer s.peerLock.Unlock()
 
-	s.peers[p.RemoteAddr().String()] = p
+	s.peers[remotePeerId] = p
 	// peer{ remoteAddr : remoteAddr}
 
 	return nil
@@ -365,5 +427,6 @@ func (s *FileServer) Start() error {
 func init() {
 	gob.Register(MessageStoreFile{})
 	gob.Register(MessageGetFile{})
-	gob.Register(MessageGetPeers{})
+	gob.Register(MessagePingPeers{})
+	gob.Register(MessagePongPeers{})
 }
