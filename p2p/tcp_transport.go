@@ -5,6 +5,8 @@ import (
 	"fmt"
 	"net"
 	"sync"
+
+	"github.com/eniimz/cas/encryption"
 )
 
 type TCPPeer struct {
@@ -12,11 +14,11 @@ type TCPPeer struct {
 	//outbound = true => dialing and retrieving the conn(outgoing)
 	//outbound = false => accepting and retieving the connection (incoming)
 	outbound bool
-
-	Wg *sync.WaitGroup
+	Wg       *sync.WaitGroup
 }
 
 func NewTCPPeer(conn net.Conn, outbound bool) *TCPPeer {
+
 	return &TCPPeer{
 		Conn:     conn,
 		outbound: outbound,
@@ -35,25 +37,31 @@ func (p *TCPTransport) Close() error {
 
 type TCPTransportOpts struct {
 	ListenAddress string    //opts
-	HanshakeFunc  Handshake //opts
+	HandshakeFunc Handshake //opts
 	Decoder       Decoder   //opts
+	NodeID        string
 }
 
 type TCPTransport struct {
 	TCPTransportOpts
 	listener net.Listener
-
-	OnPeer func(Peer) error
-	rpcch  chan Message
+	OnPeer   func(Peer) error
+	rpcch    chan Message
 }
 
 func NewTCPTransport(opts TCPTransportOpts) *TCPTransport {
+
+	if len(opts.NodeID) == 0 {
+		opts.NodeID = encryption.GenerateId()
+	}
+
 	return &TCPTransport{
 		TCPTransportOpts: opts,
 		rpcch:            make(chan Message),
 	}
 }
 
+// This implements the Transport interface
 func (t *TCPTransport) ListenAndAccept() error {
 	var err error
 
@@ -65,7 +73,7 @@ func (t *TCPTransport) ListenAndAccept() error {
 
 	// log.Println(t.listener)
 
-	go startAcceptLoop(t)
+	go startAcceptLoop(t, t.NodeID)
 
 	return nil
 
@@ -81,8 +89,8 @@ func (t *TCPTransport) Dial(listenAddress string) error {
 
 	//after dialing we also have to listen to that connection (peer)
 	//so we can send data back and forth
-
-	go t.handleConn(conn, true)
+	fmt.Printf("Now handling the dialed connection\n")
+	go t.handleConn(conn, true, t.NodeID)
 
 	return nil
 
@@ -103,19 +111,19 @@ func (t *TCPTransport) Consume() <-chan Message {
 	return t.rpcch
 }
 
-func startAcceptLoop(t *TCPTransport) {
+func startAcceptLoop(t *TCPTransport, nodeID string) {
 	for {
 		conn, err := t.listener.Accept()
 		if err != nil {
 			fmt.Printf("TCP accept error: %s\n", err)
 		}
 		// we handle each new connection inside a different go routine
-		go t.handleConn(conn, false)
+		go t.handleConn(conn, false, nodeID)
 	}
 
 }
 
-func (t *TCPTransport) handleConn(conn net.Conn, outbound bool) {
+func (t *TCPTransport) handleConn(conn net.Conn, outbound bool, nodeID string) {
 
 	var err error
 
@@ -127,10 +135,11 @@ func (t *TCPTransport) handleConn(conn net.Conn, outbound bool) {
 	}()
 
 	peer := NewTCPPeer(conn, outbound)
+	fmt.Printf("New peer connected: %+v\n", peer)
 
 	//peer here is of type *TCPPeer struct
 	//this Handshake func expects a param that implements Peer interface
-	if err := t.HanshakeFunc(peer); err != nil {
+	if err := t.HandshakeFunc(peer, nodeID); err != nil {
 		// conn.Close()
 		fmt.Printf("TCP Handshake error: %s", err)
 		return
@@ -148,6 +157,7 @@ func (t *TCPTransport) handleConn(conn net.Conn, outbound bool) {
 
 	// a Read loop to read messages (rpcs) that are received
 	for {
+		fmt.Printf("Reading messages from peer %s\n", peer.RemoteAddr())
 		msg := Message{} //rpc
 		err = t.Decoder.Decode(conn, &msg)
 		if errors.Is(err, net.ErrClosed) {

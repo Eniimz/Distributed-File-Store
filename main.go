@@ -16,13 +16,14 @@ import (
 func makeServer(listenAddress string, nodes ...string) *FileServer {
 
 	root := strings.ReplaceAll(listenAddress, ":", "") + "_network"
+	nodeID := encryption.GenerateId()
+
 	transportOpts := p2p.TCPTransportOpts{
 		ListenAddress: listenAddress,
-		HanshakeFunc:  p2p.NOPHandshakeFunc,
+		HandshakeFunc: p2p.AddressExchangeHandshakeFunc,
 		Decoder:       p2p.NOPDecoder{},
+		NodeID:        nodeID,
 	}
-
-	nodeId := encryption.GenerateId()
 
 	t := p2p.NewTCPTransport(transportOpts)
 
@@ -33,7 +34,7 @@ func makeServer(listenAddress string, nodes ...string) *FileServer {
 
 	store := store.NewStore(storeOpts)
 
-	s := NewFileServer(t, nodes, store, nodeId)
+	s := NewFileServer(t, nodes, store, nodeID)
 
 	t.OnPeer = s.OnPeer
 
@@ -58,7 +59,7 @@ func main() {
 
 	s1 := makeServer(":3001")
 	s2 := makeServer(":4001", ":3001")
-	s3 := makeServer(":5001", ":3001", ":4001")
+	// s3 := makeServer(":5001", ":3001", ":4001")
 
 	go func() {
 		log.Fatal(s1.Start())
@@ -68,23 +69,23 @@ func main() {
 	go func() {
 		log.Fatal(s2.Start())
 	}()
-	time.Sleep(2 * time.Second)
+	// time.Sleep(2 * time.Second)
 
-	go func() {
-		log.Fatal(s3.Start())
-	}()
+	// go func() {
+	// 	log.Fatal(s3.Start())
+	// }()
 
-	time.Sleep(2 * time.Second)
+	// time.Sleep(2 * time.Second)
 
 	// for i := 0; i < 20; i++ {
 
 	// key := fmt.Sprintf("myPrivateDate_%d", i)
-	data, err := readFile("proposal.pdf")
-	if err != nil {
-		log.Fatal(err)
-	}
-	key := "proposal.pdf"
-	s2.StoreData(key, data)
+	// data, err := readFile("proposal.pdf")
+	// if err != nil {
+	// 	log.Fatal(err)
+	// }
+	// key := "proposal.pdf"
+	// s2.StoreData(key, data)
 
 	// if err := s2.store.Delete(key); err != nil {
 	// 	log.Fatal(err)

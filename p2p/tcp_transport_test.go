@@ -12,7 +12,7 @@ func TestTcpTransport(t *testing.T) {
 
 	opts := TCPTransportOpts{
 		ListenAddress: listenAdder,
-		HanshakeFunc:  NOPHandshakeFunc,
+		HandshakeFunc: NOPHandshakeFunc,
 		Decoder:       NOPDecoder{},
 	}
 

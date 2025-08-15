@@ -21,14 +21,14 @@ import (
 type FileServer struct {
 	pathTransFormFunc store.PathTransFormFunc
 	Root              string
-	Transport         p2p.Transport
 	bootstrappedNodes []string
 	quitch            chan struct{}
-	store             *store.Store
 	peerLock          sync.RWMutex
 	peers             map[string]p2p.Peer
 	EncKey            []byte
 	NodeID            string
+	Transport         p2p.Transport
+	store             *store.Store
 }
 
 type Message struct {
@@ -46,18 +46,22 @@ type MessageGetFile struct {
 	OwnerID string
 }
 
+type MessageGetPeers struct {
+	Address string
+}
+
 func NewFileServer(transportOpts *p2p.TCPTransport, nodes []string, storeOpts *store.Store, nodeId string) *FileServer {
 
 	return &FileServer{
 		pathTransFormFunc: store.DefaultPathTransformFunc,
 		Root:              store.DefaultRootName,
-		Transport:         transportOpts,
 		bootstrappedNodes: nodes,
 		quitch:            make(chan struct{}),
-		store:             storeOpts,
 		peers:             make(map[string]p2p.Peer),
 		EncKey:            encryption.NewEncryptionKey(),
 		NodeID:            nodeId,
+		Transport:         transportOpts,
+		store:             storeOpts,
 	}
 }
 
@@ -81,7 +85,7 @@ func (s *FileServer) broadcast(p *Message) error {
 	}
 
 	mw := io.MultiWriter(peers...)
-
+	//writes to multple peers at once
 	mw.Write([]byte{p2p.IncomingMessage})
 	if _, err := mw.Write(buf.Bytes()); err != nil {
 		fmt.Printf("The err: %s\n", err)
@@ -220,13 +224,12 @@ func (s *FileServer) consumeOrCloseLoop() {
 	for {
 		select {
 		case msg := <-s.Transport.Consume():
-
+			fmt.Printf("Received message from %+v\n", msg)
 			var m Message
 			if err := gob.NewDecoder(bytes.NewReader(msg.Payload)).Decode(&m); err != nil {
 				fmt.Printf("The error: %s\n", err)
 			}
-
-			if err := s.handleMessage(msg.From, &m); err != nil {
+			if err := s.handleMessage(msg.From, msg.PeerId, &m); err != nil {
 				fmt.Printf("handle Message Error: %s", err)
 			}
 		case <-s.quitch:
@@ -236,15 +239,15 @@ func (s *FileServer) consumeOrCloseLoop() {
 
 }
 
-func (s *FileServer) handleMessage(from string, msg *Message) error {
+func (s *FileServer) handleMessage(from string, incomingPeerID string, msg *Message) error {
 
 	switch v := msg.Payload.(type) {
 	case MessageStoreFile:
-		if err := s.handleMessageStoreFile(from, v); err != nil {
+		if err := s.handleMessageStoreFile(from, incomingPeerID, v); err != nil {
 			return err
 		}
 	case MessageGetFile:
-		if err := s.handleMessageGetFile(from, v); err != nil {
+		if err := s.handleMessageGetFile(from, incomingPeerID, v); err != nil {
 			return err
 		}
 
@@ -253,7 +256,7 @@ func (s *FileServer) handleMessage(from string, msg *Message) error {
 	return nil
 }
 
-func (s *FileServer) handleMessageStoreFile(from string, msg MessageStoreFile) error {
+func (s *FileServer) handleMessageStoreFile(from string, incomingPeerID string, msg MessageStoreFile) error {
 
 	peer, ok := s.peers[from]
 	if !ok {
@@ -269,7 +272,7 @@ func (s *FileServer) handleMessageStoreFile(from string, msg MessageStoreFile) e
 	return nil
 }
 
-func (s *FileServer) handleMessageGetFile(from string, msg MessageGetFile) error {
+func (s *FileServer) handleMessageGetFile(from string, incomingPeerID string, msg MessageGetFile) error {
 
 	if !s.store.Has(msg.Key, msg.OwnerID) {
 		return fmt.Errorf("data couldnt be found in the remote peer: %s", from)
@@ -313,6 +316,7 @@ func (s *FileServer) bootstrap(bootstrapNodes []string) {
 		}
 
 		go func(addr string) {
+			fmt.Printf("Dialing remote peer: %s\n", addr)
 			if err := s.Transport.Dial(addr); err != nil {
 				fmt.Printf("Error while connecting to remote peer: %s", err)
 			}
@@ -329,8 +333,9 @@ func (s *FileServer) OnPeer(p p2p.Peer) error {
 	s.peerLock.Lock()
 
 	defer s.peerLock.Unlock()
-	// peer{ remoteAddr : remoteAddr}
+
 	s.peers[p.RemoteAddr().String()] = p
+	// peer{ remoteAddr : remoteAddr}
 
 	return nil
 }
@@ -360,4 +365,5 @@ func (s *FileServer) Start() error {
 func init() {
 	gob.Register(MessageStoreFile{})
 	gob.Register(MessageGetFile{})
+	gob.Register(MessageGetPeers{})
 }

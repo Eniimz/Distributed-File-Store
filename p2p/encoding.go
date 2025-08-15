@@ -14,11 +14,11 @@ type NOPDecoder struct{}
 func (d NOPDecoder) Decode(r io.Reader, msg *Message) error {
 
 	peakBuf := make([]byte, 1)
-	_, err := r.Read(peakBuf)
+	pN, err := r.Read(peakBuf)
 	if err != nil {
 		return err
 	}
-
+	fmt.Printf("Received (%d) bytes from the network\n", pN)
 	msg.Stream = peakBuf[0] == IncomingStream
 	if msg.Stream {
 		return nil
