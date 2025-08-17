@@ -1,7 +1,9 @@
 package main
 
 import (
+	"bufio"
 	"bytes"
+	"fmt"
 	"io"
 	"log"
 	"os"
@@ -57,52 +59,106 @@ func readFile(filePath string) (io.Reader, error) {
 
 func main() {
 
-	s1 := makeServer(":3001")
-	s2 := makeServer(":4001", ":3001")
-	s3 := makeServer(":5001", ":3001")
+	s1 := makeServer(":3001")                   // 0 bootstrap nodes (hub)
+	s2 := makeServer(":4001", ":3001")          // 1 bootstrap node
+	s3 := makeServer(":5001", ":3001", ":4001") // 2 bootstrap nodes
+	s4 := makeServer(":6001", ":3001", ":5001") // 3 bootstrap nodes
+	// s5 := makeServer(":7001", ":3001", ":5001", ":6001") // 4 bootstrap nodes
 
 	go func() {
-		log.Fatal(s1.Start())
+		if err := s1.Start(); err != nil {
+			fmt.Printf("Server s1 error: %v\n", err)
+		}
 	}()
-	time.Sleep(2 * time.Second)
+	time.Sleep(500 * time.Millisecond)
 
 	go func() {
-		log.Fatal(s2.Start())
+		if err := s2.Start(); err != nil {
+			fmt.Printf("Server s2 error: %v\n", err)
+		}
 	}()
-	// time.Sleep(2 * time.Second)
+
+	time.Sleep(500 * time.Millisecond)
 
 	go func() {
-		log.Fatal(s3.Start())
+		if err := s3.Start(); err != nil {
+			fmt.Printf("Server s3 error: %v\n", err)
+		}
 	}()
+	time.Sleep(500 * time.Millisecond)
+	go func() {
+		if err := s4.Start(); err != nil {
+			fmt.Printf("Server s4 error: %v\n", err)
+		}
+	}()
+	time.Sleep(500 * time.Millisecond)
+	// go func() {
+	// 	if err := s5.Start(); err != nil {
+	// 		fmt.Printf("Server s5 error: %v\n", err)
+	// 	}
+	// }()
+	// time.Sleep(500 * time.Millisecond)
 
-	// time.Sleep(2 * time.Second)
+	time.Sleep(5 * time.Second)
 
-	// for i := 0; i < 20; i++ {
+	// Print peer counts for all servers before storing
+	fmt.Printf("\n=== PEER COUNTS BEFORE STORING ===\n")
+	servers := []*FileServer{s1, s2, s3, s4}
+	serverNames := []string{"s1", "s2", "s3", "s4"}
 
-	// key := fmt.Sprintf("myPrivateDate_%d", i)
-	// data, err := readFile("proposal.pdf")
-	// if err != nil {
-	// 	log.Fatal(err)
-	// }
-	// key := "proposal.pdf"
-	// s2.StoreData(key, data)
+	for i, server := range servers {
+		fmt.Printf("%s (%s): %d peers\n", serverNames[i], server.Transport.Addr(), len(server.peers))
+	}
+	fmt.Printf("========================================\n")
 
-	// if err := s2.store.Delete(key); err != nil {
-	// 	log.Fatal(err)
-	// }
+	data := bytes.NewReader([]byte("The Proposal data, yes"))
+	key := "proposal.pdf"
+	fmt.Printf("Storing file from s2...\n")
+	if err := s2.StoreData(key, data); err != nil {
+		fmt.Printf("The error while storing: %s", err)
+	}
 
-	// if _, err := s2.Read(key); err != nil {
-	// 	log.Fatal(err)
-	// }
+	// Wait a bit for connections to establish
+	time.Sleep(5 * time.Second)
 
-	// }
+	fmt.Printf("\n=== All servers started ===\n")
+	fmt.Printf("Commands:\n")
+	fmt.Printf("  'peers' - Print all peer maps\n")
+	fmt.Printf("  'exit'  - Shutdown and exit\n")
+	fmt.Printf("> ")
 
-	// r, err := readFile("proposal.pdf")
-	// if err != nil {
-	// 	log.Fatal(err)
-	// }
+	scanner := bufio.NewScanner(os.Stdin)
+	for scanner.Scan() {
+		input := strings.TrimSpace(scanner.Text())
 
-	// fmt.Println("This the read data of the file: ", r)
+		switch input {
+		case "peers":
+			fmt.Printf("\n=== CURRENT PEER MAPS ===\n")
+			s1.PrintPeers()
+			s2.PrintPeers()
+			s3.PrintPeers()
+			s4.PrintPeers()
 
-	select {}
+		case "exit":
+			goto shutdown
+		default:
+			fmt.Printf("Unknown command: %s\n", input)
+		}
+
+		fmt.Printf("> ")
+	}
+
+shutdown:
+
+	fmt.Printf("\n=== FINAL PEER MAPS ===\n")
+	s1.PrintPeers()
+	s2.PrintPeers()
+	s3.PrintPeers()
+	s4.PrintPeers()
+
+	fmt.Printf("Shutting down servers...\n")
+	s1.Stop()
+	s2.Stop()
+	s3.Stop()
+	s4.Stop()
 }

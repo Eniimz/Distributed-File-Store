@@ -6,6 +6,7 @@ import (
 	"crypto/md5"
 	"crypto/rand"
 	"encoding/hex"
+	"fmt"
 	"io"
 )
 
@@ -70,15 +71,21 @@ func CopyEncrypt(key []byte, src io.Reader, dst io.Writer) (int64, error) {
 
 	block, err := aes.NewCipher(key)
 	if err != nil {
+		fmt.Printf("Error in encrypt: %s", err)
 		return 0, err
 	}
 
 	iv := make([]byte, block.BlockSize())
 	if _, err := io.ReadFull(rand.Reader, iv); err != nil {
+
+		fmt.Printf("Error in encrypt: %s", err)
 		return 0, err
 	}
 
 	if _, err = dst.Write(iv); err != nil {
+
+		fmt.Printf("Error in encrypt: %s", err)
+
 		return 0, err
 	}
 
@@ -94,6 +101,8 @@ func CopyEncrypt(key []byte, src io.Reader, dst io.Writer) (int64, error) {
 			stream.XORKeyStream(buf[:n], buf[:n])
 			nn, err := dst.Write(buf[:n])
 			if err != nil {
+
+				fmt.Printf("Error in encrypt: %s", err)
 				return 0, err
 			}
 			nw += nn

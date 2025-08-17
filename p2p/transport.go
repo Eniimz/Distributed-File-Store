@@ -19,4 +19,7 @@ type Peer interface {
 	net.Conn
 	Send([]byte) error
 	CloseStream()
+
+	SetPeerInfo(*PeerInfo)
+	GetPeerInfo() PeerInfo
 }

@@ -23,29 +23,29 @@ import (
 //cant use this as func in a for loop
 // var ErrorInvalidHandshake = errors.New("invalid handshake")
 
-type Message struct {
-	Payload any
-}
+type Handshake func(Peer, HandshakeData) (*PeerInfo, error)
 
-type Handshake func(Peer, MetaData) (string, error)
+func NOPHandshakeFunc(Peer, HandshakeData) error { return nil }
 
-func NOPHandshakeFunc(Peer, MetaData) error { return nil }
-
-func AddressExchangeHandshakeFunc(peer Peer, metadata MetaData) (string, error) {
+func AddressExchangeHandshakeFunc(peer Peer, metadata HandshakeData) (*PeerInfo, error) {
 
 	if err := sendHandshake(metadata, peer); err != nil {
-		return "", err
+		fmt.Printf("The err: %s\n", err)
+		return nil, err
 	}
 
-	data, err := receiveHandshake(metadata, peer)
+	peerInfo, err := receiveHandshake(peer)
 	if err != nil {
-		return "", err
+		fmt.Printf("The err: %s\n", err)
+		return nil, err
 	}
 
-	return data, nil
+	fmt.Printf("Received tha handshake: %+v", *peerInfo)
+
+	return peerInfo, nil
 }
 
-func sendHandshake(metadata MetaData, peer Peer) error {
+func sendHandshake(metadata HandshakeData, peer Peer) error {
 
 	buf := new(bytes.Buffer)
 
@@ -62,13 +62,22 @@ func sendHandshake(metadata MetaData, peer Peer) error {
 	return nil
 }
 
-func receiveHandshake(metadata MetaData, peer Peer) (string, error) {
+func receiveHandshake(peer Peer) (*PeerInfo, error) {
 
-	var m MetaData
+	var p PeerInfo
+	buf := make([]byte, 1028)
 
-	if err := gob.NewDecoder(bytes.NewReader(metadata)).Decode(&m); err != nil {
+	n, err := peer.Read(buf)
+	if err != nil {
+		fmt.Printf("The error: %s\n", err)
+		return nil, err
+	}
+
+	buf = buf[:n]
+
+	if err := gob.NewDecoder(bytes.NewReader(buf)).Decode(&p); err != nil {
 		fmt.Printf("The error: %s\n", err)
 	}
 
-	return string(buf[:n]), nil
+	return &p, nil
 }

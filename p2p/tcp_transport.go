@@ -9,12 +9,18 @@ import (
 	"github.com/eniimz/cas/encryption"
 )
 
+type PeerInfo struct {
+	ID          string
+	ListenAddrs string
+}
+
 type TCPPeer struct {
 	net.Conn
 	//outbound = true => dialing and retrieving the conn(outgoing)
 	//outbound = false => accepting and retieving the connection (incoming)
 	outbound bool
 	Wg       *sync.WaitGroup
+	PeerInfo
 }
 
 func NewTCPPeer(conn net.Conn, outbound bool) *TCPPeer {
@@ -26,6 +32,20 @@ func NewTCPPeer(conn net.Conn, outbound bool) *TCPPeer {
 	}
 }
 
+// This implements the Peer interface
+func (p *TCPPeer) SetPeerInfo(pInfo *PeerInfo) {
+	p.PeerInfo = PeerInfo{
+		ID:          pInfo.ID,
+		ListenAddrs: pInfo.ListenAddrs,
+	}
+}
+
+// This implements the Peer interface
+func (p *TCPPeer) GetPeerInfo() PeerInfo {
+	return p.PeerInfo
+}
+
+// This implements the Peer interface
 func (p *TCPPeer) CloseStream() {
 	p.Wg.Done()
 }
@@ -45,13 +65,13 @@ type TCPTransportOpts struct {
 type TCPTransport struct {
 	TCPTransportOpts
 	listener net.Listener
-	OnPeer   func(Peer, string) error
+	OnPeer   func(Peer) error
 	rpcch    chan Message
 }
 
-type MetaData struct {
-	ListenAddress string
-	NodeID        string
+type HandshakeData struct {
+	ID          string
+	ListenAddrs string
 }
 
 func NewTCPTransport(opts TCPTransportOpts) *TCPTransport {
@@ -76,9 +96,9 @@ func (t *TCPTransport) ListenAndAccept() error {
 		return err
 	}
 
-	metadata := MetaData{
-		ListenAddress: t.ListenAddress,
-		NodeID:        t.NodeID,
+	metadata := HandshakeData{
+		ID:          t.NodeID,
+		ListenAddrs: t.ListenAddress,
 	}
 	// log.Println(t.listener)
 
@@ -96,9 +116,9 @@ func (t *TCPTransport) Dial(listenAddress string) error {
 		return err
 	}
 
-	metadata := MetaData{
-		ListenAddress: t.ListenAddress,
-		NodeID:        t.NodeID,
+	metadata := HandshakeData{
+		ID:          t.NodeID,
+		ListenAddrs: t.ListenAddress,
 	}
 
 	//after dialing we also have to listen to that connection (peer)
@@ -125,7 +145,7 @@ func (t *TCPTransport) Consume() <-chan Message {
 	return t.rpcch
 }
 
-func startAcceptLoop(t *TCPTransport, metadata MetaData) {
+func startAcceptLoop(t *TCPTransport, metadata HandshakeData) {
 	for {
 		conn, err := t.listener.Accept()
 		if err != nil {
@@ -137,7 +157,7 @@ func startAcceptLoop(t *TCPTransport, metadata MetaData) {
 
 }
 
-func (t *TCPTransport) handleConn(conn net.Conn, outbound bool, metadata MetaData) {
+func (t *TCPTransport) handleConn(conn net.Conn, outbound bool, metadata HandshakeData) {
 
 	var err error
 
@@ -149,21 +169,22 @@ func (t *TCPTransport) handleConn(conn net.Conn, outbound bool, metadata MetaDat
 	}()
 
 	peer := NewTCPPeer(conn, outbound)
-	fmt.Printf("New peer connected: %+v\n", peer)
 
 	//peer here is of type *TCPPeer struct
 	//this Handshake func expects a param that implements Peer interface
-	remotePeerId, err := t.HandshakeFunc(peer, metadata)
+	peerInfo, err := t.HandshakeFunc(peer, metadata)
 	if err != nil {
 		fmt.Printf("TCP Handshake error: %s", err)
 		return
 	}
 
+	peer.SetPeerInfo(peerInfo)
+	fmt.Printf("i\nThe TCP Peer after setting : %+v\n", peer)
+
 	//if user populates OnPeer, we pass the peer connection to the func in params
 	//and invoke it, otherwise we dont
-
 	if t.OnPeer != nil {
-		if err = t.OnPeer(peer, remotePeerId); err != nil { //when some node makes a connection to this node
+		if err = t.OnPeer(peer); err != nil { //when some node makes a connection to this node
 			fmt.Printf("Peer error occureed... ")
 			return
 		}
@@ -171,7 +192,6 @@ func (t *TCPTransport) handleConn(conn net.Conn, outbound bool, metadata MetaDat
 
 	// a Read loop to read messages (rpcs) that are received
 	for {
-		fmt.Printf("Reading messages from peer %s\n", peer.RemoteAddr())
 		msg := Message{} //rpc
 		err = t.Decoder.Decode(conn, &msg)
 		if errors.Is(err, net.ErrClosed) {
@@ -183,8 +203,8 @@ func (t *TCPTransport) handleConn(conn net.Conn, outbound bool, metadata MetaDat
 			continue
 		}
 
-		msg.From = conn.RemoteAddr().Network()
-		msg.RemotePeerId = remotePeerId
+		msg.From = peer.ListenAddrs
+		msg.RemotePeerId = peer.ID
 
 		if msg.Stream {
 			peer.Wg.Add(1)
