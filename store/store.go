@@ -75,6 +75,7 @@ func (s *Store) Has(key string, id string) bool {
 	pathKey := CASPathTransformFunc(key)
 	pathNameWithRoot := fmt.Sprintf("%s/%s/%s", s.Root, id, pathKey.PathName)
 
+	fmt.Printf("Checking if file exists: %s\n", pathNameWithRoot)
 	_, err := os.Stat(pathNameWithRoot)
 	if errors.Is(err, fs.ErrNotExist) {
 		return false
@@ -160,9 +161,12 @@ func (s *Store) writeStream(key string, r io.Reader, id string) (int64, error) {
 	}
 
 	defer f.Close()
+
+	fmt.Printf("Copying to file data to file: %s\n", f.Name())
 	//f is the returned file that is created
 	n, err := io.Copy(f, r)
 	if err != nil {
+		fmt.Printf("Error copying to file: %s\n", err)
 		return 0, err
 	}
 
@@ -196,15 +200,23 @@ func (s *Store) readStream(key string, id string) (int64, io.ReadCloser, error) 
 	return fi.Size(), file, nil
 }
 
-func (s *Store) Delete(key string) error {
+func (s *Store) Delete(key string, id string) error {
 
 	pathKey := CASPathTransformFunc(key)
+	pathNameWithRoot := fmt.Sprintf("%s/%s/%s/%s", s.Root, id, pathKey.PathName, pathKey.FileName)
 
+	if !s.Has(key, id) {
+		return fmt.Errorf("the file doesnt exist in the disk: %s", pathNameWithRoot)
+	}
+
+	fmt.Printf("The file does exists in: %s", pathNameWithRoot)
+
+	fmt.Printf("Deleting....")
 	defer func() {
 		fmt.Printf("deleted [%s] from disk\n", pathKey.FileName)
 	}()
 
-	firstPath := fmt.Sprintf("%s/%s", s.Root, pathKey.firstPath(pathKey.fullPath()))
+	firstPath := fmt.Sprintf("%s/%s/%s", s.Root, id, pathKey.firstPath(pathKey.fullPath()))
 
 	return os.RemoveAll(firstPath)
 

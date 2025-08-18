@@ -40,8 +40,6 @@ func AddressExchangeHandshakeFunc(peer Peer, metadata HandshakeData) (*PeerInfo,
 		return nil, err
 	}
 
-	fmt.Printf("Received tha handshake: %+v", *peerInfo)
-
 	return peerInfo, nil
 }
 

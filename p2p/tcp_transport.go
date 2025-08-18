@@ -123,7 +123,6 @@ func (t *TCPTransport) Dial(listenAddress string) error {
 
 	//after dialing we also have to listen to that connection (peer)
 	//so we can send data back and forth
-	fmt.Printf("Now handling the dialed connection\n")
 	go t.handleConn(conn, true, metadata)
 
 	return nil
@@ -179,7 +178,6 @@ func (t *TCPTransport) handleConn(conn net.Conn, outbound bool, metadata Handsha
 	}
 
 	peer.SetPeerInfo(peerInfo)
-	fmt.Printf("i\nThe TCP Peer after setting : %+v\n", peer)
 
 	//if user populates OnPeer, we pass the peer connection to the func in params
 	//and invoke it, otherwise we dont
@@ -208,9 +206,9 @@ func (t *TCPTransport) handleConn(conn net.Conn, outbound bool, metadata Handsha
 
 		if msg.Stream {
 			peer.Wg.Add(1)
-			fmt.Printf("Waiting till the stream is done\n")
+			fmt.Printf("[%s] Waiting till the stream is done\n", t.Addr())
 			peer.Wg.Wait()
-			fmt.Printf("The stream is done and completed\n")
+			fmt.Printf("[%s] The stream is done and completed\n", t.Addr())
 			continue
 		}
 
