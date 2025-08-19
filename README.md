@@ -4,16 +4,13 @@ A distributed file storage system built in Go that implements content addressing
 
 ## 🚀 Overview
 
-This system implements a distributed hash table approach where files are stored using their SHA-1 cryptographic hash as the identifier. Files are automatically replicated across a network of peer nodes, providing redundancy and fault tolerance without requiring a central server. The system uses TCP-based peer discovery and encryption for secure data transmission between nodes.
+This system eliminates the need for traditional file paths by using cryptographic hashes as file addresses. When you store a file, the system calculates its SHA-1 hash and uses that as the unique identifier. The file is then distributed across the network of connected nodes, ensuring it's available even if some nodes go offline. This approach provides data integrity verification, automatic deduplication, and eliminates single points of failure.
 
 **What makes it special:**
 - **No central server** - Files are shared directly between peers
 - **Automatic replication** - Store once, available everywhere
 - **Content verification** - Files are verified by their hash, ensuring integrity
 - **Efficient storage** - Identical files are deduplicated automatically
-- **Fault tolerance** - If one node goes down, files remain accessible from others
-
-**Perfect for:** Distributed applications, content delivery networks, backup systems, and scenarios where you need reliable file sharing without a central authority.
 
 ## 🏗️ How It Works
 
