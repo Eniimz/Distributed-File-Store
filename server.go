@@ -6,6 +6,7 @@ import (
 	"encoding/gob"
 	"fmt"
 	"io"
+	"strings"
 	"sync"
 	"time"
 
@@ -48,7 +49,7 @@ type MessageGetFile struct {
 
 // ask for peers
 type MessagePingPeers struct {
-	TTL uint8
+	// Simple ping - no TTL needed
 }
 
 // changing the map type here so that we can dial the peer
@@ -100,6 +101,30 @@ func (s *FileServer) broadcast(p *Message) error {
 	}
 
 	return nil
+}
+
+func (s *FileServer) sendToPeer(senderId string, msg *Message) error {
+
+	peer, ok := s.peers[senderId]
+	if !ok {
+		return fmt.Errorf("peer (%s) could not be found in the peer list", peer)
+	}
+
+	buf := new(bytes.Buffer)
+
+	if err := gob.NewEncoder(buf).Encode(msg); err != nil {
+		fmt.Printf("Error during encoding one peer msg: %s\n", err)
+		return err
+	}
+
+	peer.Send([]byte{p2p.IncomingMessage})
+	if err := peer.Send(buf.Bytes()); err != nil {
+		fmt.Printf("Error in sending msg to specific peer: %s", err)
+		return err
+	}
+
+	return nil
+
 }
 
 func (s *FileServer) Read(key string) (io.Reader, error) {
@@ -221,29 +246,6 @@ func (s *FileServer) Stop() {
 	close(s.quitch)
 }
 
-// PrintPeers prints all peers in the server's peer map
-func (s *FileServer) PrintPeers() {
-	fmt.Printf("DEBUG: PrintPeers called for server %s\n", s.Transport.Addr())
-	s.peerLock.RLock()
-	defer s.peerLock.RUnlock()
-
-	fmt.Printf("\n=== Peer Map for Server %s ===\n", s.Transport.Addr())
-	if len(s.peers) == 0 {
-		fmt.Printf("No peers connected\n")
-		return
-	}
-
-	for peerID, peer := range s.peers {
-		peerInfo := peer.GetPeerInfo()
-		fmt.Printf("Peer ID: %s\n", peerID)
-		fmt.Printf("  Listen Address: %s\n", peerInfo.ListenAddrs)
-		fmt.Printf("  Remote Address: %s\n", peer.RemoteAddr())
-		fmt.Printf("  Local Address: %s\n", peer.LocalAddr())
-		fmt.Printf("---\n")
-	}
-	fmt.Printf("Total peers: %d\n\n", len(s.peers))
-}
-
 // The dialers read loop, but as well as the first read loop of the remote server that was dialed..
 func (s *FileServer) consumeOrCloseLoop() {
 
@@ -258,7 +260,13 @@ func (s *FileServer) consumeOrCloseLoop() {
 			fmt.Printf("[%s] Received message from %+v\n", s.Transport.Addr(), msg.From)
 			var m Message
 			if err := gob.NewDecoder(bytes.NewReader(msg.Payload)).Decode(&m); err != nil {
+				// Skip corrupted messages gracefully
+				if strings.Contains(err.Error(), "gob:") {
+					fmt.Printf("Skipping corrupted message: %s\n", err)
+					continue
+				}
 				fmt.Printf("The error: %s\n", err)
+				continue
 			}
 			if err := s.handleMessage(msg.From, msg.RemotePeerId, &m); err != nil {
 				fmt.Printf("handle Message Error: %s", err)
@@ -321,31 +329,9 @@ func (s *FileServer) handleMessagePingPeers(from string, incomingPeerID string, 
 
 	s.sendToPeer(incomingPeerID, pongMessage)
 
-	return nil
-}
-
-func (s *FileServer) sendToPeer(senderId string, msg *Message) error {
-
-	peer, ok := s.peers[senderId]
-	if !ok {
-		return fmt.Errorf("peer (%s) could not be found in the peer list", peer)
-	}
-
-	buf := new(bytes.Buffer)
-
-	if err := gob.NewEncoder(buf).Encode(msg); err != nil {
-		fmt.Printf("Error during encoding one peer msg: %s\n", err)
-		return err
-	}
-
-	peer.Send([]byte{p2p.IncomingMessage})
-	if err := peer.Send(buf.Bytes()); err != nil {
-		fmt.Printf("Error in sending msg to specific peer: %s", err)
-		return err
-	}
+	// No ping forwarding - keep it simple
 
 	return nil
-
 }
 
 func (s *FileServer) handleMessagePongPeers(from string, incomingPeerID string, msg MessagePongPeers) error {
@@ -464,47 +450,6 @@ func (s *FileServer) OnPeer(p p2p.Peer) error {
 	return nil
 }
 
-func (s *FileServer) startPeriodicPing() {
-	// First ping after 3 seconds
-	// time.Sleep(3 * time.Second)
-	fmt.Printf("The First ping to the remote peers.\n")
-	s.sendPing()
-
-	// Then ping every 100 seconds
-	ticker := time.NewTicker(30 * time.Second)
-	defer ticker.Stop()
-
-	for range ticker.C {
-		fmt.Printf("Periodic ping to the remote peers.\n")
-		s.sendPing()
-		// Peer count printing moved to main.go
-	}
-}
-
-func (s *FileServer) sendPing() {
-	msg := Message{
-		Payload: MessagePingPeers{
-			TTL: 3,
-		},
-	}
-	s.broadcast(&msg)
-}
-
-func (s *FileServer) PrintPeerCount() {
-	s.peerLock.RLock()
-	defer s.peerLock.RUnlock()
-	fmt.Printf("\n🌐 === PEER COUNT: Server at port %s === 🌐\n", s.Transport.Addr())
-	fmt.Printf("📊 Total Connected Peers: %d\n", len(s.peers))
-	if len(s.peers) > 0 {
-		fmt.Printf("📋 Peer List:\n")
-		for peerID, peer := range s.peers {
-			peerAddr := peer.GetPeerInfo().ListenAddrs
-			fmt.Printf("  - Server at port %s (ID: %s)\n", peerAddr, peerID[:8])
-		}
-	}
-	fmt.Printf("================================================\n\n")
-}
-
 func (s *FileServer) Start() error {
 
 	if err := s.Transport.ListenAndAccept(); err != nil {
@@ -513,9 +458,6 @@ func (s *FileServer) Start() error {
 
 	fmt.Printf("\nListening on the port: %s", s.Transport.Addr())
 
-	//for each connection that is accepted, we check the bootstapped nodes len,
-	//if > 0, then we dial all those nodes
-
 	if len(s.bootstrappedNodes) > 0 {
 		s.bootstrap(s.bootstrappedNodes)
 	}
@@ -523,6 +465,33 @@ func (s *FileServer) Start() error {
 	go s.startPeriodicPing()
 
 	s.consumeOrCloseLoop()
+
+	return nil
+}
+
+func (s *FileServer) startPeriodicPing() {
+	// First ping after 3 seconds
+	// time.Sleep(3 * time.Second)
+	fmt.Printf("The First ping to the remote peers.\n")
+	s.sendPing()
+
+	ticker := time.NewTicker(80 * time.Second)
+	defer ticker.Stop()
+
+	for range ticker.C {
+		fmt.Printf("Periodic ping to the remote peers.\n")
+		s.sendPing()
+	}
+}
+
+func (s *FileServer) sendPing() error {
+
+	msg := Message{
+		Payload: MessagePingPeers{},
+	}
+	if err := s.broadcast(&msg); err != nil {
+		return err
+	}
 
 	return nil
 }

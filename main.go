@@ -58,18 +58,15 @@ func readFile(filePath string) (io.Reader, error) {
 
 func main() {
 
-	// Creating 8 servers
+	// Creating 5 servers
 
 	s1 := makeServer(":3001")
 	s2 := makeServer(":4001", ":3001")
 	s3 := makeServer(":5001", ":3001", ":4001")
 	s4 := makeServer(":6001", ":3001", ":5001")
 	s5 := makeServer(":7001", ":3001", ":4001", ":5001")
-	s6 := makeServer(":8001", ":4001", ":6001", ":7001")
-	s7 := makeServer(":9001", ":4001", ":5001", ":6001", ":7001", ":8001")
-	s8 := makeServer(":10001", ":4001", ":5001", ":6001", ":7001", ":8001")
 
-	servers := []*FileServer{s1, s2, s3, s4, s5, s6, s7, s8}
+	servers := []*FileServer{s1, s2, s3, s4, s5}
 
 	// Start all servers
 	for _, server := range servers {
@@ -103,9 +100,10 @@ func main() {
 	for i, server := range servers {
 		fmt.Printf("Server %d (%s): %d peers\n", i+1, server.Transport.Addr(), len(server.peers))
 	}
+
 	fmt.Printf("==========================================\n")
 
-	reader, err := readFile("videoplayback.mp4")
+	reader, err := readFile("proposal.pdf")
 	key := "proposal.pdf"
 	if err != nil {
 		fmt.Printf("Error reading file: %v\n", err)
@@ -116,7 +114,7 @@ func main() {
 		fmt.Printf("Error storing file: %v\n", err)
 		return
 	}
-	fmt.Printf("✅ File stored and distributed\n")
+	fmt.Printf("----File stored and distributed-----\n")
 
 	// Wait for distribution
 	time.Sleep(3 * time.Second)
@@ -128,11 +126,10 @@ func main() {
 
 	_, err = s2.Read(key)
 	if err != nil {
-		fmt.Printf("❌ Network retrieval failed: %s\n", err)
+		fmt.Printf("Network retrieval failed: %s\n", err)
 		return
 	}
-	fmt.Printf("✅ File successfully retrieved from network\n")
+	fmt.Printf("File successfully retrieved from network\n")
 
-	fmt.Printf("\n🎉 Distributed file store test completed successfully!\n")
 	select {}
 }

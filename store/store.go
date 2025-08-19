@@ -77,11 +77,7 @@ func (s *Store) Has(key string, id string) bool {
 
 	fmt.Printf("Checking if file exists: %s\n", pathNameWithRoot)
 	_, err := os.Stat(pathNameWithRoot)
-	if errors.Is(err, fs.ErrNotExist) {
-		return false
-	}
-
-	return true
+	return !errors.Is(err, fs.ErrNotExist)
 }
 
 func CASPathTransformFunc(key string) PathKey {
@@ -206,7 +202,8 @@ func (s *Store) Delete(key string, id string) error {
 	pathNameWithRoot := fmt.Sprintf("%s/%s/%s/%s", s.Root, id, pathKey.PathName, pathKey.FileName)
 
 	if !s.Has(key, id) {
-		return fmt.Errorf("the file doesnt exist in the disk: %s", pathNameWithRoot)
+		fmt.Printf("the file doesnt exist in the disk: %s", pathNameWithRoot)
+		return nil
 	}
 
 	fmt.Printf("The file does exists in: %s", pathNameWithRoot)
