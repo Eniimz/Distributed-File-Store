@@ -1,9 +1,5 @@
 # 🗂️ Distributed Content-Addressable Storage (CAS)
 
-A high-level diagram of the system:
-
-![Distributed CAS Diagram](public/CAS.png)
-
 A distributed file storage system built in Go that implements content addressing through cryptographic hashing. Files are stored using their SHA-1 hash as identifiers and automatically replicated across peer nodes. The system provides decentralized storage with built-in redundancy and fault tolerance.
 
 ## 🚀 Overview
@@ -15,6 +11,8 @@ This system eliminates the need for traditional file paths by using cryptographi
 - **Automatic replication** - Store once, available everywhere
 - **Content verification** - Files are verified by their hash, ensuring integrity
 - **Efficient storage** - Identical files are deduplicated automatically
+
+![Distributed CAS Diagram](public/CAS.png)
 
 ## 🏗️ How It Works
 
