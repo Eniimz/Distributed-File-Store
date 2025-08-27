@@ -40,7 +40,7 @@ Storage Path: /Saga/nodeId/abc12/3def4/56789.../abc123def456...
 
 ```bash
 # Clone and run demo (5 nodes)
-git clone <your-repo>
+git clone https://github.com/Eniimz/Distributed-File-Store.git
 cd Distributed-File-Store
 go run .
 ```
